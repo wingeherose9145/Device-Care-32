@@ -23,10 +23,17 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    
+    // ✨ 新增配置：阻止 Android 压缩 assets 目录中的 zip 和 db 文件，防止词典损坏
+    aaptOptions {
+        noCompress "zip", "db"
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    
     kotlinOptions {
         jvmTarget = '1.8'
     }
