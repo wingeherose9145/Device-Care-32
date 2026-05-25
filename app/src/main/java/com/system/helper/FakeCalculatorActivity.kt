@@ -37,8 +37,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private var database: SQLiteDatabase? = null
 
-    // ... 保持 hiraganaList 和 katakanaList 不变 ...
-
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
@@ -85,7 +83,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private fun setupDatabase() {
         try {
             val dbFile = getDatabasePath("dict.db")
-            Log.d("DB", "📍 DB路径: ${dbFile.absolutePath}, 存在: ${dbFile.exists()}")
+            Log.d("DB", "数据库路径: ${dbFile.absolutePath}")
 
             if (!dbFile.exists()) {
                 Log.d("DB", "开始解压 dict.zip...")
@@ -93,12 +91,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
                     ZipInputStream(assetStream).use { zipInput ->
                         var entry = zipInput.nextEntry
                         while (entry != null) {
-                            Log.d("DB", "ZIP文件: ${entry.name}")
                             if (entry.name.endsWith(".db")) {
                                 FileOutputStream(dbFile).use { output ->
                                     zipInput.copyTo(output)
                                 }
-                                Log.d("DB", "✅ 解压成功！文件大小: ${dbFile.length()} bytes")
+                                Log.d("DB", "✅ 解压成功，大小: ${dbFile.length()} bytes")
                                 break
                             }
                             entry = zipInput.nextEntry
@@ -109,21 +106,12 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
             if (dbFile.exists()) {
                 database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                Log.d("DB", "✅ 数据库打开成功")
-
-                // 显示所有表
-                val tableCursor = database!!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null)
-                while (tableCursor.moveToNext()) {
-                    Log.d("DB", "找到表: ${tableCursor.getString(0)}")
-                }
-                tableCursor.close()
+                Log.d("DB", "✅ 数据库加载成功")
             }
         } catch (e: Exception) {
-            Log.e("DB", "❌ 数据库初始化失败", e)
+            Log.e("DB", "❌ 数据库加载失败", e)
         }
     }
-
-    // ... scanAllButtons, refreshButtonLabels, setupSpecialLongClick, handleButtonClick, convertToTransformChar 保持不变 ...
 
     private fun scanAllButtons(view: View) {
         if (view is MaterialButton) buttonList.add(view)
@@ -172,15 +160,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun convertToTransformChar(char: String): String {
         return when (char) {
-            "つ" -> "っ"; "っ" -> "つ"
-            "や" -> "ゃ"; "ゃ" -> "や"
-            "ゆ" -> "ゅ"; "ゅ" -> "ゆ"
-            "よ" -> "ょ"; "ょ" -> "よ"
-            "あ" -> "ぁ"; "ぁ" -> "あ"
-            "い" -> "ぃ"; "ぃ" -> "い"
-            "う" -> "ぅ"; "ぅ" -> "う"
-            "え" -> "ぇ"; "ぇ" -> "え"
-            "お" -> "ぉ"; "ぉ" -> "お"
+            "つ" -> "っ", "っ" -> "つ"
+            "や" -> "ゃ", "ゃ" -> "や"
+            "ゆ" -> "ゅ", "ゅ" -> "ゆ"
+            "よ" -> "ょ", "ょ" -> "よ"
+            "あ" -> "ぁ", "ぁ" -> "あ"
+            "い" -> "ぃ", "ぃ" -> "い"
+            "う" -> "ぅ", "ぅ" -> "う"
+            "え" -> "ぇ", "ぇ" -> "え"
+            "お" -> "ぉ", "ぉ" -> "お"
             else -> char
         }
     }
@@ -196,43 +184,29 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
 
         searchBar.text = currentInput
-        Log.d("QUERY", "🔍 查询输入: '$currentInput'")
 
         matchJob = lifecycleScope.launch {
             val results = withContext(Dispatchers.Default) {
                 val list = mutableListOf<String>()
                 database?.let { db ->
                     try {
-                        // 测试查询
-                        val cursor = db.rawQuery("SELECT COUNT(*) FROM mdx", null)
-                        cursor.moveToFirst()
-                        val total = cursor.getInt(0)
-                        Log.d("QUERY", "数据库总词条数: $total")
-                        cursor.close()
-
-                        val searchCursor = db.rawQuery(
-                            "SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 10", 
+                        val cursor = db.rawQuery(
+                            "SELECT word, definition FROM dictionary WHERE word LIKE ? LIMIT 15", 
                             arrayOf("$currentInput%")
                         )
-
-                        var count = 0
-                        while (searchCursor.moveToNext()) {
-                            val word = searchCursor.getString(0) ?: ""
-                            val rawText = searchCursor.getString(1) ?: ""
+                        while (cursor.moveToNext()) {
+                            val word = cursor.getString(0) ?: ""
+                            val rawText = cursor.getString(1) ?: ""
                             val clean = Html.fromHtml(rawText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                             list.add("【$word】\n$clean")
-                            count++
-                            Log.d("QUERY", "✅ 匹配到: $word")
                         }
-                        searchCursor.close()
-                        Log.d("QUERY", "本次查询找到 $count 条")
+                        cursor.close()
                     } catch (e: Exception) {
-                        Log.e("QUERY", "查询异常", e)
+                        Log.e("QUERY", "查询失败", e)
                     }
                 }
                 list
             }
-
             filteredTexts = results
             updateDisplayResult()
         }
@@ -246,7 +220,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
         val combined = filteredTexts.joinToString("\n\n")
         val spannable = SpannableString(combined)
         val goldColor = 0xFFFFD700.toInt()
-        spannable.setSpan(ForegroundColorSpan(goldColor), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        if (currentInput.length <= combined.length) {
+            spannable.setSpan(ForegroundColorSpan(goldColor), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         display.text = spannable
     }
 
