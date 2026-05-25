@@ -1,33 +1,50 @@
 name: Android CI
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 保持配置：只在 GitHub 网页上手动点击运行
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. 拉取仓库代码
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. 在编译前自动解压 assets 目录中的词库压缩包
+      - name: Unzip Large Dictionary Text
+        run: |
+          cd app/src/main/assets/
+          if [ -f "dict.zip" ]; then
+            echo "发现 dict.zip，正在解压 32M 大文本词库..."
+            unzip -o dict.zip
+            rm dict.zip
+            echo "✅ 词库解压完成，临时压缩包已清理。"
+          else
+            echo "⚠️ 未发现 dict.zip，请确保本地已正确放置该压缩包，否则编译出的 App 将没有词库！"
+          fi
+
+      # 3. 设置 JDK 环境
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+          cache: 'gradle' # 开启 gradle 缓存，加速编译
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
+      # 4. 赋予 Gradle 执行权限
       - name: Grant execute permission
         run: chmod +x ./gradlew
 
+      # 5. 编译 Debug 版本的 APK
       - name: Build APK
         run: ./gradlew assembleDebug
 
+      # 6. 将编译生成的 APK 上传到 Artifacts
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SystemHelper-APK
+          # ✨ 这里也同步修改了你在网页端下载时的压缩包名称（可根据喜好修改）
+          name: DictionaryHelper-APK
           path: app/build/outputs/apk/debug/app-debug.apk
