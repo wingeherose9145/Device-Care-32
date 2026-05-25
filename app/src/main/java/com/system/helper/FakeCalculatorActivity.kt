@@ -22,23 +22,19 @@ import java.io.InputStreamReader
 class FakeCalculatorActivity : AppCompatActivity() {
 
     private lateinit var display: TextView
+    private lateinit var searchBar: TextView  // 新增输入搜索栏句柄
     private val inputSequence = mutableListOf<String>()
     private var unlocked = false
 
-    // 解锁暗号序列
     private val secretSequence = listOf("あ", "い", "う", "え", "お") 
-
-    // 按首字母分类的 Map 词库结构（纯净版散列架构）
     private var allTextsMap = mutableMapOf<String, MutableList<String>>()
     
     private var currentInput = ""          
     private var filteredTexts = listOf<String>() 
     private var filteredIndex = 0          
-
-    // 💡 新增：异步匹配的协程句柄，用来管理和防止打字过快时产生算力叠加
     private var matchJob: Job? = null
 
-    // 50音图标准矩阵定义
+    // 50音图全新改版矩阵（第8行变更，第10行恢复）
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", 
         "か", "き", "く", "け", "こ", 
@@ -47,22 +43,22 @@ class FakeCalculatorActivity : AppCompatActivity() {
         "な", "に", "ぬ", "ね", "の", 
         "は", "ひ", "ふ", "へ", "ほ", 
         "ま", "み", "む", "め", "も", 
-        "や", "ゆ", "よ", "◀", "▶", 
+        "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", 
-        "わ", "を", "ん", "假", "促" 
+        "わ", "を", "ん", "假名", "促音" 
     )
 
     private val katakanaList = listOf(
-        "ア", "イ", "ウ", "エ", "オ",
+        "ア", "イ", "ウ", "电", "オ",
         "カ", "キ", "ク", "ケ", "コ",
         "サ", "シ", "ス", "セ", "ソ",
         "タ", "チ", "ツ", "テ", "ト",
-        "ナ", "ニ", "ヌ", "ネ", "ノ",
+        "纳", "ニ", "ヌ", "ネ", "ノ",
         "ハ", "ヒ", "フ", "ヘ", "ホ",
         "マ", "ミ", "ム", "メ", "モ",
-        "ヤ", "ユ", "ヨ", "◀", "▶",
+        "ヤ", "ユ", "ヨ", "删除", "ー",
         "ラ", "リ", "ル", "レ", "ロ",
-        "ワ", "ヲ", "ン", "ー", "促"
+        "ワ", "ヲ", "ン", "假名", "促音"
     )
 
     private var isHiragana = true
@@ -77,18 +73,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_fake_calculator)
         display = findViewById(R.id.display)
+        searchBar = findViewById(R.id.search_bar) // 绑定搜索栏
         
-        // 触摸控制台：短按退格，空白切换平片假名
-        display.setOnClickListener {
-            if (currentInput.isNotEmpty()) {
-                currentInput = currentInput.substring(0, currentInput.length - 1)
-                matchAndFilter()
-            } else {
-                isHiragana = !isHiragana
-                refreshButtonLabels()
-            }
+        // 搜索栏单击事件：直接一键清空输入
+        searchBar.setOnClickListener {
+            currentInput = ""
+            matchAndFilter()
         }
 
+        // 内容显示区域长按事件：用于保留原来的全清空功能
         display.setOnLongClickListener {
             currentInput = ""
             matchAndFilter()
@@ -96,6 +89,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
 
         loadTextLibrary()
+        searchBar.text = ""
         display.text = ""
 
         scanAllButtons(window.decorView.findViewById(android.R.id.content))
@@ -103,9 +97,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    /**
-     * 1. 彻底纯净的词库加载：直接抓取首个假名作为 Key
-     */
     private fun loadTextLibrary() {
         allTextsMap.clear()
         try {
@@ -116,7 +107,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 val trimmed = line!!.trim()
                 if (!trimmed.startsWith("#") && trimmed.isNotEmpty()) {
                     val firstChar = trimmed.first().toString()
-                    
                     if (!allTextsMap.containsKey(firstChar)) {
                         allTextsMap[firstChar] = mutableListOf()
                     }
@@ -133,8 +123,12 @@ class FakeCalculatorActivity : AppCompatActivity() {
         if (view is MaterialButton) {
             buttonList.add(view)
         } else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
+            // 通过网格排序规律保证按钮ID与阵列索引完美对齐
+            val childCount = view.childCount
+            var i = 0
+            while (i < childCount) {
                 scanAllButtons(view.getChildAt(i))
+                i++
             }
         }
     }
@@ -153,7 +147,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun setupSpecialLongClick() {
         for (button in buttonList) {
-            if (button.text == "促") {
+            if (button.id == R.id.btn_10_5) { // 绑定右下角最后一个按钮
                 button.setOnLongClickListener {
                     if (unlocked) {
                         startActivity(Intent(this, MainActivity::class.java))
@@ -167,23 +161,21 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun handleButtonClick(value: String) {
         when (value) {
-            "◀" -> {
-                if (filteredTexts.isNotEmpty()) {
-                    filteredIndex = if (filteredIndex - 1 < 0) filteredTexts.size - 1 else filteredIndex - 1
-                    updateDisplayResult()
+            "删除" -> { // 原“上一个”变更为删除键
+                if (currentInput.isNotEmpty()) {
+                    currentInput = currentInput.substring(0, currentInput.length - 1)
+                    matchAndFilter()
                 }
             }
-            "▶" -> {
-                if (filteredTexts.isNotEmpty()) {
-                    filteredIndex = (filteredIndex + 1) % filteredTexts.size
-                    updateDisplayResult()
-                }
+            "ー" -> { // 原“下一个”变更为长音符号直接上屏
+                currentInput += "ー"
+                matchAndFilter()
             }
-            "假" -> {
+            "假名" -> { // 切换平假名/片假名
                 isHiragana = !isHiragana
                 refreshButtonLabels()
             }
-            "促" -> {
+            "促音" -> { // 促/号键功能完全保持不变
                 if (currentInput.isNotEmpty()) {
                     val lastChar = currentInput.last().toString()
                     val converted = convertToTransformChar(lastChar)
@@ -205,36 +197,32 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * 2. ⚡ 升级核心：多线程高能异步匹配逻辑 ⚡
-     * 利用 Kotlin 协程把 5.6 万大数据查找扔进 Default 后台线程计算，杜绝点击键盘产生粘连滞后感
-     */
     private fun matchAndFilter() {
-        // 连击按键优化：如果有上一次还没算完的后台匹配，立刻切断它，全力计算最新的点击
         matchJob?.cancel()
 
+        // 当没有输入内容时，清空两个栏位
         if (currentInput.isEmpty()) {
             filteredTexts = listOf()
             filteredIndex = 0
+            searchBar.text = ""
             display.text = ""
             return
         }
 
-        // 启动专属生命周期协程
+        // 搜索栏实时、单行且直接显示当前敲出来的假名
+        searchBar.text = currentInput
+
         matchJob = lifecycleScope.launch {
             val firstChar = currentInput.first().toString()
             val subList = allTextsMap[firstChar] ?: listOf<String>()
 
-            // ⚡【在后台线程计算过滤】杜绝主线程阻塞
             val matchedList = withContext(Dispatchers.Default) {
                 subList.filter { it.startsWith(currentInput) }
             }
 
-            val maxAllowedSize = if (currentInput.length == 1) 3 else 4
-            filteredTexts = matchedList.take(maxAllowedSize)
-            
+            // 既然可以自由滑动，我们将单次匹配显示的数量限制放大到 15 条
+            filteredTexts = matchedList.take(15)
             filteredIndex = 0 
-            // 算完了回到主线程渲染高亮UI
             updateDisplayResult()
         }
     }
@@ -324,15 +312,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "て" -> "で"
             "で" -> "て"
             "と" -> "ど"
-            "ど" -> "と"
+            "ど" -> "开"
             "タ" -> "ダ"
             "ダ" -> "タ"
             "チ" -> "ヂ"
             "ヂ" -> "チ"
-            "テ" -> "デ"
+            "テ" -> "开"
             "デ" -> "テ"
             "ト" -> "ド"
-            "ド" -> "ト"
+            "导" -> "ト"
             "は" -> "ば"
             "ば" -> "ぱ"
             "ぱ" -> "は"
@@ -367,9 +355,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * 3. 彻底纯净的渲染：丢弃所有大括号检索，直接用输入长度对首部动态染色！
-     */
     private fun updateDisplayResult() {
         if (currentInput.isEmpty()) {
             display.text = ""
@@ -377,21 +362,19 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
 
         if (filteredTexts.isEmpty()) {
-            display.text = currentInput
+            display.text = ""
             return
         }
 
-        // 拿到绝对干净、没有大括号的词条（例："かわ 川 [河流]"）
-        val matchText = filteredTexts[filteredIndex]
-        val spannable = SpannableString(matchText)
+        // 把匹配到的多条词库内容通过换行符（\n\n）连接起来，形成干净的列表
+        val combinedText = filteredTexts.joinToString(separator = "\n\n")
+        val spannable = SpannableString(combinedText)
         
-        // 用户当前实际输入了几个假名，高亮长度就是多少
+        val goldColor = 0xFFFFD700.toInt()
         val highlightLength = currentInput.length
 
-        if (highlightLength <= matchText.length) {
-            val goldColor = 0xFFFFD700.toInt() // 亮金色
-            
-            // 动态染色：只针对已敲出来的这几个假名进行金色渲染
+        // 依然保留首条结果中已匹配假名的高亮提示功能
+        if (highlightLength <= combinedText.length) {
             spannable.setSpan(
                 ForegroundColorSpan(goldColor),
                 0,
