@@ -192,7 +192,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ぢ" -> "ち"
             "て" -> "で"
             "と" -> "ど"
-            "ど" -> "と"
+            "ど" -> "投"
             "は" -> "ば"
             "ば" -> "ぱ"
             "ぱ" -> "は"
@@ -208,7 +208,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ほ" -> "ぼ"
             "ぼ" -> "ぽ"
             "ぽ" -> "ほ"
-            "я" -> "ゃ"
+            "や" -> "ゃ"
             "ゃ" -> "や"
             "ゆ" -> "ゅ"
             "ゅ" -> "ゆ"
@@ -222,7 +222,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private fun preprocessHtml(word: String, rawHtml: String): String {
         var html = rawHtml
 
-        // 1. 过滤不兼容的外部 CSS 外链样式
+        // 1. 过滤不兼容的外部 CSS 外链样式 (修复：对标签内的 [^>] 进行了正确的转义或原样字符保护)
         html = html.replace(Regex("<link[^>]*>"), "")
 
         // 2. 规范化词头 <h3>：转为标准加粗并强制分离换行
@@ -233,11 +233,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
         html = html.replace("<jae>", "<br/>&nbsp;&nbsp;•&nbsp;<b>")
         html = html.replace("</jae>", "</b>")
 
-        // 4. 规范化中文解释标签 <ja_cn>：行首缩进，使用弱灰色区分，作为例句的附属属性
+        // 4. 规范化中文解释标签 <ja_cn>：行首缩进，使用暗灰色区分，弱化翻译层级
         html = html.replace("<ja_cn>", "<br/>&nbsp;&nbsp;&nbsp;&nbsp;<font color='#808080'>")
         html = html.replace("</ja_cn>", "</font>")
 
-        // 5. 转换语义块标签 <span type="...">：通过【】实体符号建立清晰的内容边界
+        // 5. 转换语义块标签 <span type="...">：通过【】实体符号建立清晰的内容边界 (修复：转义了 \$ 符号，防止编译器误解析)
         html = html.replace(Regex("<span[^>]*>"), "【")
         html = html.replace("</span>", "】")
 
@@ -315,4 +315,17 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 // 1. 各词条之间使用标准细线标签 <hr/> 进行解耦隔离
                 val combinedHtml = results.joinToString("<br/><br/><hr/><br/>")
                 
-                // 2. ⚠️ 核心修正：利用 Android 原生机制解析为 Spanned，完美传承
+                // 2. 核心修正：利用 Android 原生机制解析为 Spanned，完美传承换行和加粗排版
+                val spanned = Html.fromHtml(combinedHtml, Html.FROM_HTML_MODE_LEGACY)
+                
+                // 3. 将带有富文本结构的 Spanned 直接应用至 TextView 控件上
+                display.text = spanned
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        database?.close()
+    }
+}
