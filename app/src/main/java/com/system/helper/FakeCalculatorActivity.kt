@@ -67,21 +67,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        // 加载数据库
-        lifecycleScope.launch(Dispatchers.IO) {
-            setupDatabase()
-        }
+        lifecycleScope.launch(Dispatchers.IO) { setupDatabase() }
 
-        searchBar.setOnClickListener {
-            currentInput = ""
-            matchAndFilter()
-        }
-
-        display.setOnLongClickListener {
-            currentInput = ""
-            matchAndFilter()
-            true
-        }
+        searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
+        display.setOnLongClickListener { currentInput = ""; matchAndFilter(); true }
 
         searchBar.text = ""
         display.text = ""
@@ -174,6 +163,31 @@ class FakeCalculatorActivity : AppCompatActivity() {
         matchAndFilter()
     }
 
+    /** 修复后的促音转换函数 */
+    private fun convertToTransformChar(char: String): String {
+        return when (char) {
+            "つ" -> "っ"
+            "っ" -> "つ"
+            "や" -> "ゃ"
+            "ゃ" -> "や"
+            "ゆ" -> "ゅ"
+            "ゅ" -> "ゆ"
+            "よ" -> "ょ"
+            "ょ" -> "よ"
+            "あ" -> "ぁ"
+            "ぁ" -> "あ"
+            "い" -> "ぃ"
+            "ぃ" -> "い"
+            "う" -> "ぅ"
+            "ぅ" -> "う"
+            "え" -> "ぇ"
+            "ぇ" -> "え"
+            "お" -> "ぉ"
+            "ぉ" -> "お"
+            else -> char
+        }
+    }
+
     private fun matchAndFilter() {
         matchJob?.cancel()
 
@@ -209,19 +223,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
             filteredTexts = results
             updateDisplayResult()
         }
-    }
-
-    private fun convertToTransformChar(char: String): String = when (char) {
-        "つ" -> "っ", "っ" -> "つ",
-        "や" -> "ゃ", "ゃ" -> "や",
-        "ゆ" -> "ゅ", "ゅ" -> "ゆ",
-        "よ" -> "ょ", "ょ" -> "よ",
-        "あ" -> "ぁ", "ぁ" -> "あ",
-        "い" -> "ぃ", "ぃ" -> "い",
-        "う" -> "ぅ", "ぅ" -> "う",
-        "え" -> "ぇ", "ぇ" -> "え",
-        "お" -> "ぉ", "ぉ" -> "お",
-        else -> char
     }
 
     private fun updateDisplayResult() {
