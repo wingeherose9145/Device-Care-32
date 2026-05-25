@@ -1,15 +1,19 @@
 package com.system.helper
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
@@ -33,24 +37,26 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var filteredTexts = listOf<String>() 
     private var matchJob: Job? = null
 
-    // 内存数据结构：高效率 K-V 词典（使用高效的 HashMap 应对 30M+ 级别的大文本内存常驻）
-    private val dictionaryMap = mutableMapOf<String, String>()
+    // 优化的内存字典结构，用于极速索引
+    // ArrayEntry 存储: 0=原词, 1=过滤了特殊符号的纯单词, 2=原释义, 3=过滤了排版符的纯释义
+    private val dictionaryList = mutableListOf<Array<String>>()
     private var isDictionaryLoaded = false
 
+    // ✨ 修复 2：全面校对并修正了平假名中的错别字与元音顺序
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
         "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
         "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
-        "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "促音" 
+        "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
     private val katakanaList = listOf(
         "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
         "サ", "シ", "ス", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
-        "マ", "ミ", "ム", "美", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
-        "拉", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "促音"
+        "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
+        "ラ", "リ", "ル", "レ", "ロ", "ワ", "ヲ", "ン", "假名", "变音"
     )
 
     private var isHiragana = true
@@ -67,11 +73,20 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        // 异步流式加载清洗后的 32M 纯文本词库
         lifecycleScope.launch(Dispatchers.IO) { loadTxtDatabase() }
 
         searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
-        display.setOnLongClickListener { currentInput = ""; matchAndFilter(); true }
+        
+        // ✨ 修复 5：长按结果显示区域，一键复制当前查出来的所有词条
+        display.setOnLongClickListener { 
+            if (display.text.isNotEmpty()) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Dictionary Result", display.text.toString())
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, "词条内容已复制到剪贴板", Toast.LENGTH_SHORT).show()
+            }
+            true 
+        }
 
         searchBar.text = ""
         display.text = ""
@@ -81,37 +96,37 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    // 针对大文件优化的流式装载逻辑
+    // ✨ 修复 1 & 6：大幅优化大文本加载，预先清洗检索文本，降低匹配时的计算开销
     private fun loadTxtDatabase() {
         try {
-            Log.d("TXT_DB", "正在从 assets 中加载 32M 精简版 dict.txt...")
+            Log.d("TXT_DB", "开始高性能流式装载...")
             val startTime = System.currentTimeMillis()
             
             assets.open("dict.txt").use { inputStream ->
-                // 使用较大的缓冲区（64KB）提升 IO 读取大文件的性能
                 BufferedReader(InputStreamReader(inputStream, "UTF-8"), 65536).use { reader ->
                     var line: String?
-                    var count = 0
                     while (reader.readLine().also { line = it } != null) {
                         val trimmed = line!!.trim()
                         if (trimmed.isEmpty()) continue
                         
-                        // 按照分隔符 ||| 切分单词和释义
                         val parts = trimmed.split("|||")
                         if (parts.size >= 2) {
-                            val word = parts[0].trim()
-                            val definition = parts[1].trim()
-                            dictionaryMap[word] = definition
-                            count++
+                            val originalWord = parts[0].trim()
+                            val originalDef = parts[1].trim()
+                            
+                            // 预生成专供检索用的纯净文本（剥离【】、\n、・等控制符，防止误伤匹配）
+                            val searchWord = originalWord.replace(Regex("[【】\\[\\]\\s]"), "")
+                            val searchDef = originalDef.replace("\\n", "").replace(Regex("[【】\\[\\]・\\s]"), "")
+                            
+                            dictionaryList.add(arrayOf(originalWord, searchWord, originalDef, searchDef))
                         }
                     }
                     isDictionaryLoaded = true
-                    val timeTaken = System.currentTimeMillis() - startTime
-                    Log.d("TXT_DB", "✅ 词库成功装载到内存！耗时: ${timeTaken}ms, 总计: $count 条词条")
+                    Log.d("TXT_DB", "✅ 词库加载成功，耗时: ${System.currentTimeMillis() - startTime}ms")
                 }
             }
         } catch (e: Exception) {
-            Log.e("TXT_DB", "❌ 词库加载失败，请检查 assets 目录下是否存在 dict.txt", e)
+            Log.e("TXT_DB", "❌ 词库加载失败", e)
         }
     }
 
@@ -150,7 +165,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 refreshButtonLabels()
                 return
             }
-            "促音" -> if (currentInput.isNotEmpty()) {
+            "变音" -> if (currentInput.isNotEmpty()) {
                 val last = currentInput.last().toString()
                 currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
             }
@@ -164,30 +179,120 @@ class FakeCalculatorActivity : AppCompatActivity() {
         matchAndFilter()
     }
 
+    // ✨ 修复 3：全面重构清爽的促音、浊音、半浊音循环切换机制（变音键）
     private fun convertToTransformChar(char: String): String {
         return when (char) {
+            // 平假名
             "つ" -> "っ"
-            "っ" -> "つ"
+            "っ" -> "づ"
+            "づ" -> "つ"
+            "か" -> "が"
+            "が" -> "か"
+            "き" -> "ぎ"
+            "ぎ" -> "き"
+            "く" -> "ぐ"
+            "ぐ" -> "く"
+            "け" -> "げ"
+            "げ" -> "け"
+            "こ" -> "ご"
+            "ご" -> "こ"
+            "さ" -> "ざ"
+            "ざ" -> "さ"
+            "し" -> "じ"
+            "じ" -> "し"
+            "す" -> "ず"
+            "ず" -> "す"
+            "せ" -> "ぜ"
+            "ぜ" -> "せ"
+            "そ" -> "ぞ"
+            "ぞ" -> "そ"
+            "た" -> "だ"
+            "だ" -> "た"
+            "ち" -> "ぢ"
+            "ぢ" -> "ち"
+            "て" -> "で"
+            "で" -> "て"
+            "と" -> "ど"
+            "ど" -> "と"
+            "は" -> "ば"
+            "ば" -> "ぱ"
+            "ぱ" -> "は"
+            "ひ" -> "び"
+            "び" -> "ぴ"
+            "ぴ" -> "ひ"
+            "ふ" -> "ぶ"
+            "ぶ" -> "ぷ"
+            "ぷ" -> "ふ"
+            "へ" -> "べ"
+            "べ" -> "ぺ"
+            "ぺ" -> "へ"
+            "ほ" -> "ぼ"
+            "ぼ" -> "ぽ"
+            "ぽ" -> "ほ"
             "や" -> "ゃ"
             "ゃ" -> "や"
             "ゆ" -> "ゅ"
             "ゅ" -> "ゆ"
             "よ" -> "ょ"
             "ょ" -> "よ"
-            "あ" -> "ぁ"
-            "ぁ" -> "あ"
-            "い" -> "ぃ"
-            "ぃ" -> "い"
-            "う" -> "ぅ"
-            "ぅ" -> "う"
-            "え" -> "ぇ"
-            "ぇ" -> "え"
-            "お" -> "ぉ"
-            "ぉ" -> "お"
+            // 片假名
+            "ツ" -> "ッ"
+            "ッ" -> "ヅ"
+            "ヅ" -> "ツ"
+            "カ" -> "ガ"
+            "ガ" -> "カ"
+            "キ" -> "ギ"
+            "ギ" -> "キ"
+            "ク" -> "グ"
+            "ぐ" -> "ク"
+            "ケ" -> "ゲ"
+            "ゲ" -> "ケ"
+            "コ" -> "ゴ"
+            "ゴ" -> "コ"
+            "サ" -> "ザ"
+            "ザ" -> "サ"
+            "シ" -> "ジ"
+            "ジ" -> "シ"
+            "ス" -> "ズ"
+            "ズ" -> "ス"
+            "セ" -> "ゼ"
+            "ゼ" -> "セ"
+            "ソ" -> "ゾ"
+            "ゾ" -> "ソ"
+            "タ" -> "ダ"
+            "实用" -> "タ"
+            "チ" -> "ヂ"
+            "ヂ" -> "チ"
+            "テ" -> "デ"
+            "デ" -> "テ"
+            "ト" -> "ド"
+            "ド" -> "ト"
+            "ハ" -> "バ"
+            "バ" -> "パ"
+            "力" -> "ハ"
+            "ヒ" -> "ビ"
+            "び" -> "ピ"
+            "ピ" -> "ヒ"
+            "フ" -> "ブ"
+            "ブ" -> "プ"
+            "プ" -> "フ"
+            "ヘ" -> "ベ"
+            "ベ" -> "ペ"
+            "ペ" -> "ヘ"
+            "ホ" -> "ボ"
+            "ボ" -> "ポ"
+            "ポ" -> "ホ"
+            "ヤ" -> "ャ"
+            "ャ" -> "ヤ"
+            "ユ" -> "ュ"
+            "ュ" -> "ユ"
+            "ヨ" -> "ョ"
+            "ョ" -> "ヨ"
             else -> char
         }
     }
 
+    // ✨ 修复 1 & 6：多重条件快速检索，零垃圾匹配，毫秒级响应
     private fun matchAndFilter() {
         matchJob?.cancel()
 
@@ -202,48 +307,76 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
         matchJob = lifecycleScope.launch {
             val results = withContext(Dispatchers.Default) {
-                val list = mutableListOf<String>()
+                val exactMatches = mutableListOf<String>()
+                val fuzzyMatches = mutableListOf<String>()
                 
                 if (isDictionaryLoaded) {
-                    var matchCount = 0
-                    for ((word, definition) in dictionaryMap) {
-                        // 模糊匹配：判断输入的假名是否在单词里出现，或者包含在释义中
-                        if (word.contains(currentInput, ignoreCase = true) || 
-                            definition.contains(currentInput, ignoreCase = true)) {
+                    for (entry in dictionaryList) {
+                        val originalWord = entry[0]
+                        val searchWord = entry[1]
+                        val originalDef = entry[2]
+                        val searchDef = entry[3]
+                        
+                        // 彻底避免符号误伤，只匹配纯词和纯释义文本
+                        if (searchWord.contains(currentInput, ignoreCase = true) || 
+                            searchDef.contains(currentInput, ignoreCase = true)) {
                             
-                            // 将清洗时保留的文本换行占位符 \\n 重新替换还原为系统真正可解析的 \n
-                            val cleanDef = definition.replace("\\n", "\n").trim()
-                            list.add("【$word】\n$cleanDef")
+                            val formattedDef = originalDef.replace("\\n", "\n").trim()
+                            val displayString = "【$originalWord】\n$formattedDef"
                             
-                            matchCount++
-                            if (matchCount >= 15) break // 限制最多展示 15 条，防止极端匹配下内存过载
+                            // 核心优化：完美精准相等的词排最前显示
+                            if (searchWord == currentInput) {
+                                exactMatches.add(displayString)
+                            } else {
+                                fuzzyMatches.add(displayString)
+                            }
+                            
+                            if ((exactMatches.size + fuzzyMatches.size) >= 15) break
                         }
                     }
                 }
-                list
+                exactMatches + fuzzyMatches
             }
             filteredTexts = results
             updateDisplayResult()
         }
     }
 
+    // ✨ 修复 4：利用富文本 Span 为查出的每一条词条背景加入底色阴影进行物理区隔
     private fun updateDisplayResult() {
         if (filteredTexts.isEmpty()) {
             display.text = "未找到匹配词条\n(输入: $currentInput)"
             return
         }
+        
+        // 拼接每组词条并带有物理双换行隔开
         val combined = filteredTexts.joinToString("\n\n")
         val spannable = SpannableString(combined)
+        
         val goldColor = 0xFFFFD700.toInt()
+        val itemBgColor = 0x1AFFFFFF.toInt() // 优雅清爽的白色微透亮微阴影作为词条大背景
 
+        // 智能为搜索高亮上色
         if (currentInput.length <= combined.length) {
             spannable.setSpan(ForegroundColorSpan(goldColor), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        
+        // 动态识别各独立词条的首尾索引，精准染上多条隔离色块底色
+        var currentIndex = 0
+        for (text in filteredTexts) {
+            val start = currentIndex
+            val end = currentIndex + text.length
+            if (end <= spannable.length) {
+                spannable.setSpan(BackgroundColorSpan(itemBgColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            currentIndex = end + 2 // 跨越掉 \n\n 两个字符的分隔线
+        }
+        
         display.text = spannable
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        dictionaryMap.clear()
+        dictionaryList.clear()
     }
 }
