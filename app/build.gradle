@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.system.Dict'
+    namespace 'com.system.helper'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.system.Dict"
+        applicationId "com.system.helper"
         minSdk 21
         targetSdk 34
         versionCode 1
@@ -39,7 +39,6 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.6'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
-
-    // MDX 字典库 - 使用稳定 commit
-    implementation 'com.github.KnIfER:mdict-java:c3bc4e4fd71fc507e5b56b99394d1a5d1f941a2d'
+    
+    // 🔥 已移除 mdict-java 依赖
 }
