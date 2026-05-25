@@ -163,7 +163,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
         matchAndFilter()
     }
 
-    /** 修复后的促音转换函数 */
     private fun convertToTransformChar(char: String): String {
         return when (char) {
             "つ" -> "っ"
