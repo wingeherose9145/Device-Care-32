@@ -83,10 +83,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private fun setupDatabase() {
         try {
             val dbFile = getDatabasePath("dict.db")
-            Log.d("DB", "数据库路径: ${dbFile.absolutePath}")
-
             if (!dbFile.exists()) {
-                Log.d("DB", "开始解压 dict.zip...")
+                Log.d("DB", "正在解压 dict.zip...")
                 assets.open("dict.zip").use { assetStream ->
                     ZipInputStream(assetStream).use { zipInput ->
                         var entry = zipInput.nextEntry
@@ -143,7 +141,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
         when (value) {
             "删除" -> if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
             "ー" -> currentInput += "ー"
-            "假名" -> { isHiragana = !isHiragana; refreshButtonLabels(); return }
+            "假名" -> {
+                isHiragana = !isHiragana
+                refreshButtonLabels()
+                return
+            }
             "促音" -> if (currentInput.isNotEmpty()) {
                 val last = currentInput.last().toString()
                 currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
@@ -160,15 +162,24 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun convertToTransformChar(char: String): String {
         return when (char) {
-            "つ" -> "っ", "っ" -> "つ"
-            "や" -> "ゃ", "ゃ" -> "や"
-            "ゆ" -> "ゅ", "ゅ" -> "ゆ"
-            "よ" -> "ょ", "ょ" -> "よ"
-            "あ" -> "ぁ", "ぁ" -> "あ"
-            "い" -> "ぃ", "ぃ" -> "い"
-            "う" -> "ぅ", "ぅ" -> "う"
-            "え" -> "ぇ", "ぇ" -> "え"
-            "お" -> "ぉ", "ぉ" -> "お"
+            "つ" -> "っ"
+            "っ" -> "つ"
+            "や" -> "ゃ"
+            "ゃ" -> "や"
+            "ゆ" -> "ゅ"
+            "ゅ" -> "ゆ"
+            "よ" -> "ょ"
+            "ょ" -> "よ"
+            "あ" -> "ぁ"
+            "ぁ" -> "あ"
+            "い" -> "ぃ"
+            "ぃ" -> "い"
+            "う" -> "ぅ"
+            "ぅ" -> "う"
+            "え" -> "ぇ"
+            "ぇ" -> "え"
+            "お" -> "ぉ"
+            "ぉ" -> "お"
             else -> char
         }
     }
