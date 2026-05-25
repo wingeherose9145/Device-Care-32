@@ -47,17 +47,17 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
-        "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
+        "な", "に", "ぬ", "ね", "进", "は", "ひ", "ふ", "へ", "ほ", 
         "ま", "み", "む", "め", "mo", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
     private val katakanaList = listOf(
         "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
-        "サ", "シ", "ス", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
+        "サ", "西", "斯", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
-        "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
-        "ラ", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "变音"
+        "马", "ミ", "ム", "メ", "モ", "亚", "ユ", "ヨ", "删除", "ー",
+        "拉", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "变音"
     )
 
     private var isHiragana = true
@@ -191,14 +191,14 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ぜ" -> "せ"
             "そ" -> "ぞ"
             "ぞ" -> "そ"
-            "た" -> "だ"
+            "ta" -> "だ"
             "だ" -> "た"
             "ち" -> "ぢ"
             "ぢ" -> "ち"
             "て" -> "で"
-            "て" -> "进"
+            "て" -> "で"
             "と" -> "ど"
-            "ど" -> "进"
+            "ど" -> "与"
             "は" -> "ば"
             "ば" -> "ぱ"
             "ぱ" -> "は"
@@ -224,7 +224,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
     }
 
-    // ✨ 核心修正：扩宽检索范围，同时在单词列与释义列中查找假名
     private fun matchAndFilter() {
         matchJob?.cancel()
 
@@ -242,8 +241,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 
                 if (isDbReady && database != null) {
                     try {
-                        // ✨ 终极双列联合查询：无论假名在单词里还是在解释里，只要包含就能完美揪出来
-                        val querySQL = "SELECT $detectedWordColumn, $detectedDefColumn FROM $dictionary WHERE $detectedWordColumn LIKE ? OR $detectedDefColumn LIKE ? LIMIT 15"
+                        // ✨ 修复点：正确地将变量拼写更正为 $detectedTableName
+                        val querySQL = "SELECT $detectedWordColumn, $detectedDefColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? OR $detectedDefColumn LIKE ? LIMIT 15"
                         val keyword = "%$currentInput%"
                         val cursor = database!!.rawQuery(querySQL, arrayOf(keyword, keyword))
                         
