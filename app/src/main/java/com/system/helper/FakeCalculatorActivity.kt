@@ -35,7 +35,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private val secretSequence = listOf("あ", "い", "う", "え", "お") 
     
-    // ✨ 修复：重新补上漏掉的搜索控制变量
     private var currentInput = ""          
     private var matchJob: Job? = null
 
@@ -51,7 +50,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
         "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
-        "ま", "み", "む", "め", "mo", "や", "ゆ", "よ", "删除", "ー", 
+        "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
@@ -60,7 +59,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         "サ", "シ", "ス", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
         "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
-        "ラ", "リ", "ル", "レ", "ロ", "ワ", "ヲ", "ン", "假名", "变音"
+        "ラ", "リ", "ル", "レ", "ロ", "玩", "ヲ", "ン", "假名", "变音"
     )
 
     private var isHiragana = true
@@ -101,7 +100,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    // 🕵️‍♂️ 核心侦测逻辑：把任意未知数据库的结构翻个底朝天并可视化显示
+    // 🕵️‍♂️ 核心侦测逻辑：修复了非挂起函数直接调用 withContext 的编译错误
     private fun initAndInspectDatabase() {
         try {
             val dbFile = getDatabasePath("dict.db")
@@ -159,8 +158,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
             }
             Log.e("DB_INSPECT", "====================== 数据库结构侦测结束 ======================")
             
-            // 侦测完成后，把数据库内部具体的字段名直接抛到手机屏幕上
-            withContext(Dispatchers.Main) {
+            // ✨ 修复点：使用安全的 runOnUiThread 替换掉无法在此使用的 withContext，100% 解决编译错误
+            runOnUiThread {
                 if (isDbReady) {
                     display.text = "数据库连接成功！\n表名: $detectedTableName\n单词字段: $detectedWordColumn\n释义字段: $detectedDefColumn\n\n请现在在下方输入假名进行查词！"
                 } else {
@@ -170,9 +169,9 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
         } catch (e: Exception) {
             Log.e("DB_INSPECT", "❌ 数据库读取发生严重错误", e)
-            try {
-                withContext(Dispatchers.Main) { display.text = "数据库加载异常: ${e.message}" }
-            } catch(_: Exception){}
+            runOnUiThread {
+                display.text = "数据库加载异常: ${e.message}"
+            }
         }
     }
 
@@ -255,7 +254,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ち" -> "ぢ"
             "ぢ" -> "ち"
             "て" -> "で"
-            "电" -> "て"
+            "て" -> "で"
             "と" -> "ど"
             "ど" -> "と"
             "は" -> "ば"
@@ -273,7 +272,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ほ" -> "ぼ"
             "ぼ" -> "ぽ"
             "ぽ" -> "ほ"
-            "や" -> "ゃ"
+            "ya" -> "ゃ"
             "ゃ" -> "や"
             "ゆ" -> "ゅ"
             "ゅ" -> "ゆ"
@@ -305,7 +304,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 
                 if (isDbReady && database != null && detectedTableName.isNotEmpty()) {
                     try {
-                        // ✨ 终极动态 SQL 检索语句：完全规避字段名不一致的短板
+                        // 终极动态 SQL 检索语句：完全规避字段名不一致的短板
                         val querySQL = "SELECT $detectedWordColumn, $detectedDefColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? LIMIT 15"
                         val cursor = database!!.rawQuery(querySQL, arrayOf("%$currentInput%"))
                         
