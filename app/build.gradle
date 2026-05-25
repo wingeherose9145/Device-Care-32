@@ -39,4 +39,11 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.6'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    // Gson（解决 MainActivity 错误）
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Media3 / ExoPlayer（解决 PlayerActivity 错误）
+    implementation 'androidx.media3:media3-exoplayer:1.4.1'
+    implementation 'androidx.media3:media3-ui:1.4.1'
 }
