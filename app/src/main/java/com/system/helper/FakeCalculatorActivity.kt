@@ -38,28 +38,26 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var currentInput = ""          
     private var matchJob: Job? = null
 
-    // 数据库物理连接与侦测缓存
     private var database: SQLiteDatabase? = null
     private var isDbReady = false
-    private var detectedTableName: String = ""
-    private var detectedWordColumn: String = ""
-    private var detectedDefColumn: String = ""
+    private var detectedTableName = "dictionary"
+    private var detectedWordColumn = "word"
+    private var detectedDefColumn = "definition"
 
-    // 标准日文假名键盘映射
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
         "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
-        "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
+        "ま", "み", "む", "め", "mo", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
     private val katakanaList = listOf(
         "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
-        "サ", "シ", "ス", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
+        "サ", "シ", "ス", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
         "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
-        "ラ", "リ", "ル", "レ", "ロ", "玩", "ヲ", "ン", "假名", "变音"
+        "ラ", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "变音"
     )
 
     private var isHiragana = true
@@ -76,12 +74,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        // 异步安全初始化本地二进制数据库并侦测结构
-        lifecycleScope.launch(Dispatchers.IO) { initAndInspectDatabase() }
+        lifecycleScope.launch(Dispatchers.IO) { initDatabase() }
 
         searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
         
-        // 长按复制结果
         display.setOnLongClickListener { 
             if (display.text.isNotEmpty()) {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -100,8 +96,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    // 🕵️‍♂️ 核心侦测逻辑：修复了非挂起函数直接调用 withContext 的编译错误
-    private fun initAndInspectDatabase() {
+    private fun initDatabase() {
         try {
             val dbFile = getDatabasePath("dict.db")
             if (!dbFile.exists()) {
@@ -110,68 +105,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
                     FileOutputStream(dbFile).use { output -> input.copyTo(output) }
                 }
             }
-            
             database = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY)
+            isDbReady = true
             
-            Log.e("DB_INSPECT", "====================== 数据库结构侦测开始 ======================")
-            
-            // 1. 获取所有的真实表名
-            val tableCursor = database!!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null)
-            val tableNames = mutableListOf<String>()
-            while (tableCursor.moveToNext()) {
-                val tName = tableCursor.getString(0)
-                if (tName != "android_metadata" && tName != "sqlite_sequence") {
-                    tableNames.add(tName)
-                }
-            }
-            tableCursor.close()
-            Log.e("DB_INSPECT", "发现数据库中包含的表名: $tableNames")
-
-            if (tableNames.isNotEmpty()) {
-                // 默认探测第一张有效的词典用户表
-                detectedTableName = tableNames[0]
-                
-                // 2. 获取这张表里所有的列名（字段名）
-                val columnCursor = database!!.rawQuery("PRAGMA table_info($detectedTableName)", null)
-                val columnNames = mutableListOf<String>()
-                while (columnCursor.moveToNext()) {
-                    columnNames.add(columnCursor.getString(1))
-                }
-                columnCursor.close()
-                Log.e("DB_INSPECT", "表【$detectedTableName】中包含的列名(字段): $columnNames")
-                
-                // 3. 智能猜测模糊列名并锁定目标
-                detectedWordColumn = columnNames.find { 
-                    it.contains("word") || it.contains("kanji") || it.contains("kana") || 
-                    it.contains("key") || it.contains("heading") || it.contains("title") 
-                } ?: columnNames[0]
-                
-                detectedDefColumn = columnNames.find { 
-                    it.contains("def") || it.contains("text") || it.contains("content") || 
-                    it.contains("value") || it.contains("result") 
-                } ?: if(columnNames.size > 1) columnNames[1] else columnNames[0]
-                
-                Log.e("DB_INSPECT", "💡 智能匹配成功 -> 锁定表【$detectedTableName】的【$detectedWordColumn】与【$detectedDefColumn】")
-                isDbReady = true
-            } else {
-                Log.e("DB_INSPECT", "❌ 错误：这个数据库里没有任何有效的表格！")
-            }
-            Log.e("DB_INSPECT", "====================== 数据库结构侦测结束 ======================")
-            
-            // ✨ 修复点：使用安全的 runOnUiThread 替换掉无法在此使用的 withContext，100% 解决编译错误
             runOnUiThread {
-                if (isDbReady) {
-                    display.text = "数据库连接成功！\n表名: $detectedTableName\n单词字段: $detectedWordColumn\n释义字段: $detectedDefColumn\n\n请现在在下方输入假名进行查词！"
-                } else {
-                    display.text = "数据库连接失败或表格为空！\n请检查资产目录下是否存在非空 dict.db"
-                }
+                display.text = "词库准备就绪！\n请开始输入假名查词。"
             }
-
         } catch (e: Exception) {
-            Log.e("DB_INSPECT", "❌ 数据库读取发生严重错误", e)
-            runOnUiThread {
-                display.text = "数据库加载异常: ${e.message}"
-            }
+            Log.e("SQL_DB", "数据库加载异常", e)
+            runOnUiThread { display.text = "加载异常: ${e.message}" }
         }
     }
 
@@ -254,9 +196,9 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ち" -> "ぢ"
             "ぢ" -> "ち"
             "て" -> "で"
-            "て" -> "で"
+            "て" -> "进"
             "と" -> "ど"
-            "ど" -> "と"
+            "ど" -> "进"
             "は" -> "ば"
             "ば" -> "ぱ"
             "ぱ" -> "は"
@@ -272,7 +214,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ほ" -> "ぼ"
             "ぼ" -> "ぽ"
             "ぽ" -> "ほ"
-            "ya" -> "ゃ"
+            "や" -> "ゃ"
             "ゃ" -> "や"
             "ゆ" -> "ゅ"
             "ゅ" -> "ゆ"
@@ -282,17 +224,13 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
     }
 
-    // 动态嗅探模糊查询：用手机识别出来的真实列名去调取系统底层 SQLite
+    // ✨ 核心修正：扩宽检索范围，同时在单词列与释义列中查找假名
     private fun matchAndFilter() {
         matchJob?.cancel()
 
         if (currentInput.isEmpty()) {
             searchBar.text = ""
-            display.text = if (isDbReady) {
-                "表名: $detectedTableName\n单词字段: $detectedWordColumn\n释义字段: $detectedDefColumn\n\n请在下方输入假名进行查词！"
-            } else {
-                "数据库未就绪"
-            }
+            display.text = "请在下方输入假名进行查词"
             return
         }
 
@@ -302,11 +240,12 @@ class FakeCalculatorActivity : AppCompatActivity() {
             val results = withContext(Dispatchers.Default) {
                 val list = mutableListOf<String>()
                 
-                if (isDbReady && database != null && detectedTableName.isNotEmpty()) {
+                if (isDbReady && database != null) {
                     try {
-                        // 终极动态 SQL 检索语句：完全规避字段名不一致的短板
-                        val querySQL = "SELECT $detectedWordColumn, $detectedDefColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? LIMIT 15"
-                        val cursor = database!!.rawQuery(querySQL, arrayOf("%$currentInput%"))
+                        // ✨ 终极双列联合查询：无论假名在单词里还是在解释里，只要包含就能完美揪出来
+                        val querySQL = "SELECT $detectedWordColumn, $detectedDefColumn FROM $dictionary WHERE $detectedWordColumn LIKE ? OR $detectedDefColumn LIKE ? LIMIT 15"
+                        val keyword = "%$currentInput%"
+                        val cursor = database!!.rawQuery(querySQL, arrayOf(keyword, keyword))
                         
                         while (cursor.moveToNext()) {
                             val word = cursor.getString(0) ?: ""
@@ -317,15 +256,14 @@ class FakeCalculatorActivity : AppCompatActivity() {
                         }
                         cursor.close()
                     } catch (e: Exception) {
-                        Log.e("SQL_QUERY", "动态执行检索错误", e)
+                        Log.e("SQL_QUERY", "检索执行失败", e)
                     }
                 }
                 list
             }
             
-            // 更新 UI 显示结果并进行上色
             if (results.isEmpty()) {
-                display.text = "未找到匹配词条\n(目标表: $detectedTableName, 检索字段: $detectedWordColumn)"
+                display.text = "未找到匹配词条\n(已检索 word 与 definition 字段)"
             } else {
                 val combined = results.joinToString("\n\n")
                 val spannable = SpannableString(combined)
