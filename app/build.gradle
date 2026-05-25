@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.system.helper'
+    namespace 'com.system.dict'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.system.helper"
+        applicationId "com.system.dict"
         minSdk 21
         targetSdk 34
         versionCode 1
