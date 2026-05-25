@@ -1,13 +1,12 @@
 package com.system.helper
 
-import android.content.Context
 import android.content.Intent
-import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.text.Html
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -21,7 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.ZipInputStream
+import mdict.mdict  // ← mdict-java 核心类
 
 class FakeCalculatorActivity : AppCompatActivity() {
 
@@ -32,14 +31,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private val secretSequence = listOf("あ", "い", "う", "え", "お") 
     
-    // 💡 数据库句柄：直接连接解压后的本地 SQLite
-    private var database: SQLiteDatabase? = null
-    
     private var currentInput = ""          
     private var filteredTexts = listOf<String>() 
     private var matchJob: Job? = null
 
-    // 50音图标准矩阵配置（已完美修正换行和标点手误）
+    // 50音图
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", 
         "か", "き", "く", "け", "こ", 
@@ -56,18 +52,21 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private val katakanaList = listOf(
         "ア", "イ", "ウ", "エ", "オ",
         "カ", "キ", "ク", "ケ", "コ",
-        "サ", "シ", "斯", "单", "ソ",
+        "サ", "シ", "ス", "セ", "ソ",
         "タ", "チ", "ツ", "テ", "ト",
-        "纳", "ニ", "努", "ネ", "ノ",
-        "ハ", "飞", "フ", "ヘ", "ホ",
-        "マ", "米", "姆", "メ", "モ",
+        "ナ", "ニ", "ヌ", "ネ", "ノ",
+        "ハ", "ヒ", "フ", "ヘ", "ホ",
+        "マ", "ミ", "ム", "メ", "モ",
         "ヤ", "ユ", "ヨ", "删除", "ー",
-        "拉", "リ", "ル", "レ", "ロ",
+        "ラ", "リ", "ル", "レ", "ロ",
         "ワ", "ヲ", "ン", "假名", "促音"
     )
 
     private var isHiragana = true
     private val buttonList = mutableListOf<MaterialButton>()
+
+    // MDX 字典实例
+    private var mdxDict: mdict? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,9 +90,9 @@ class FakeCalculatorActivity : AppCompatActivity() {
             true
         }
 
-        // 🚀 后台异步：安全流式解压 assets 下的 dict.zip 并挂载数据库
+        // 异步加载 MDX
         lifecycleScope.launch(Dispatchers.IO) {
-            setupZipDatabase()
+            setupMdxDictionary()
         }
 
         searchBar.text = ""
@@ -105,49 +104,27 @@ class FakeCalculatorActivity : AppCompatActivity() {
     }
 
     /**
-     * ⚡ ZIP 自动化自动解压还原核心 ⚡
-     * 自动从 assets/dict.zip 里抠出 dict.db 放进手机隔离存储区
+     * 加载 japanese_dict.mdx
      */
-    private fun setupZipDatabase() {
+    private fun setupMdxDictionary() {
         try {
-            val dbFile = getDatabasePath("dict.db")
+            val mdxFile = File(getExternalFilesDir(null), "japanese_dict.mdx")
             
-            // 首次安装运行时执行流式快速还原
-            if (!dbFile.exists()) {
-                val parent = dbFile.parentFile
-                if (parent != null && !parent.exists()) {
-                    parent.mkdirs()
-                }
-                
-                val assetInputStream = assets.open("dict.zip")
-                val zipInputStream = ZipInputStream(assetInputStream)
-                
-                var zipEntry = zipInputStream.nextEntry
-                while (zipEntry != null) {
-                    if (zipEntry.name == "dict.db" || zipEntry.name.endsWith(".db")) {
-                        val outputStream = FileOutputStream(dbFile)
-                        val buffer = ByteArray(1024 * 64) // 64KB 高能传输缓存窗
-                        var length: Int
-                        while (zipInputStream.read(buffer).also { length = it } > 0) {
-                            outputStream.write(buffer, 0, length)
-                        }
-                        outputStream.flush()
-                        outputStream.close()
-                        break
+            // 从 assets 复制文件
+            if (!mdxFile.exists()) {
+                Log.d("MDX", "从 assets 复制 japanese_dict.mdx...")
+                assets.open("japanese_dict.mdx").use { input ->
+                    FileOutputStream(mdxFile).use { output ->
+                        input.copyTo(output)
                     }
-                    zipInputStream.closeEntry()
-                    zipEntry = zipInputStream.nextEntry
                 }
-                zipInputStream.close()
-                assetInputStream.close()
             }
+
+            mdxDict = mdict(mdxFile.absolutePath)
+            Log.d("MDX", "MDX 字典加载成功！总词条数: ${mdxDict?.entryCount() ?: 0}")
             
-            // 解压出来后，以高性能、多线程、安全只读模式建立 SQLite 连接
-            if (dbFile.exists()) {
-                database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("MDX", "MDX 加载失败", e)
         }
     }
 
@@ -155,10 +132,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
         if (view is MaterialButton) {
             buttonList.add(view)
         } else if (view is ViewGroup) {
-            var i = 0
-            while (i < view.childCount) {
+            for (i in 0 until view.childCount) {
                 scanAllButtons(view.getChildAt(i))
-                i++
             }
         }
     }
@@ -208,33 +183,29 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "促音" -> { 
                 if (currentInput.isNotEmpty()) {
                     val lastChar = currentInput.last().toString()
-                    val converted = convertToTransformChar(lastChar)
-                    currentInput = currentInput.substring(0, currentInput.length - 1) + converted
+                    currentInput = currentInput.substring(0, currentInput.length - 1) + convertToTransformChar(lastChar)
                     matchAndFilter()
                 }
             }
             else -> {
-                if (value.isNotEmpty()) {
-                    currentInput += value
-                    
-                    inputSequence.add(value)
-                    if (inputSequence.size > 5) inputSequence.removeAt(0)
-                    if (inputSequence == secretSequence) unlocked = true
+                currentInput += value
+                inputSequence.add(value)
+                if (inputSequence.size > 5) inputSequence.removeAt(0)
+                if (inputSequence == secretSequence) unlocked = true
 
-                    matchAndFilter()
-                }
+                matchAndFilter()
             }
         }
     }
 
     /**
-     * ⚡ 高效率 SQL 前缀直查过滤器 ⚡
+     * 使用 mdict-java 进行查询
      */
     private fun matchAndFilter() {
         matchJob?.cancel()
 
         if (currentInput.isEmpty()) {
-            filteredTexts = listOf()
+            filteredTexts = emptyList()
             searchBar.text = ""
             display.text = ""
             return
@@ -247,30 +218,32 @@ class FakeCalculatorActivity : AppCompatActivity() {
             
             val matchedList = withContext(Dispatchers.Default) {
                 val results = mutableListOf<String>()
-                val db = database
+                val dict = mdxDict
                 
-                if (db != null && db.isOpen) {
+                if (dict != null) {
                     try {
-                        // 🎯 对接单表直查架构：表名 mdx | 词头 word | 正文 text
-                        val query = "SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 20"
-                        val cursor = db.rawQuery(query, arrayOf("$input%"))
-                        
-                        while (cursor.moveToNext()) {
-                            val word = cursor.getString(0) ?: ""
-                            val rawText = cursor.getString(1) ?: ""
-                            
-                            // 实时进行原生大段 Html 文本的高能排版渲染洗净
-                            val cleanBody = if (rawText.isNotEmpty()) {
-                                Html.fromHtml(rawText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-                            } else {
-                                "暂无释义"
-                            }
-                            
+                        // 使用 lookUp 查找
+                        val pos = dict.lookUp(input, true)  // 严格匹配
+                        if (pos >= 0) {
+                            val word = dict.getEntryAt(pos)
+                            val htmlContent = dict.getRecordAt(pos)
+                            val cleanBody = Html.fromHtml(htmlContent, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                             results.add("【$word】\n$cleanBody")
+                        } else {
+                            // 如果严格匹配失败，尝试模糊搜索前几个
+                            val fuzzyResults = dict.flowerFindAllKeys(input, 10)
+                            for (i in 0 until minOf(8, fuzzyResults.size)) {
+                                val key = fuzzyResults[i]
+                                val p = dict.lookUp(key, true)
+                                if (p >= 0) {
+                                    val htmlContent = dict.getRecordAt(p)
+                                    val cleanBody = Html.fromHtml(htmlContent, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                                    results.add("【$key】\n$cleanBody")
+                                }
+                            }
                         }
-                        cursor.close()
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Log.e("MDX", "查询失败: $input", e)
                     }
                 }
                 results
@@ -283,154 +256,21 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun convertToTransformChar(char: String): String {
         return when (char) {
-            "つ" -> "っ"
-            "っ" -> "つ"
-            "や" -> "ゃ"
-            "ゃ" -> "や"
-            "ゆ" -> "ゅ"
-            "ゅ" -> "ゆ"
-            "よ" -> "ょ"
-            "ょ" -> "よ"
-            "あ" -> "ぁ"
-            "ぁ" -> "あ"
-            "い" -> "ぃ"
-            "ぃ" -> "い"
-            "う" -> "ぅ"
-            "ぅ" -> "う"
-            "え" -> "ぇ"
-            "ぇ" -> "え"
-            "お" -> "ぉ"
-            "ぉ" -> "お"
-            "ツ" -> "ッ"
-            "ッ" -> "ツ"
-            "ヤ" -> "ャ"
-            "ャ" -> "ヤ"
-            "ユ" -> "ュ"
-            "ュ" -> "ユ"
-            "ヨ" -> "ョ"
-            "ョ" -> "ヨ"
-            "ア" -> "ァ"
-            "ァ" -> "ア"
-            "イ" -> "ィ"
-            "ィ" -> "い"
-            "乌" -> "ゥ"
-            "ウ" -> "ゥ"
-            "ゥ" -> "乌"
-            "工" -> "ェ"
-            "エ" -> "ェ"
-            "ェ" -> "工"
-            "开" -> "テ"
-            "オ" -> "ォ"
-            "ォ" -> "开"
-            "か" -> "が"
-            "が" -> "か"
-            "き" -> "ぎ"
-            "ぎ" -> "き"
-            "く" -> "ぐ"
-            "ぐ" -> "く"
-            "け" -> "げ"
-            "げ" -> "け"
-            "こ" -> "ご"
-            "ご" -> "こ"
-            "卡" -> "ガ"
-            "カ" -> "ガ"
-            "ガ" -> "卡"
-            "キ" -> "ギ"
-            "ギ" -> "キ"
-            "ク" -> "グ"
-            "グ" -> "ク"
-            "ケ" -> "ゲ"
-            "ゲ" -> "ケ"
-            "コ" -> "ゴ"
-            "ゴ" -> "ご"
-            "ご" -> "コ"
-            "さ" -> "ざ"
-            "ざ" -> "さ"
-            "し" -> "じ"
-            "じ" -> "し"
-            "す" -> "ず"
-            "ず" -> "す"
-            "せ" -> "ぜ"
-            "ぜ" -> "せ"
-            "そ" -> "ぞ"
-            "ぞ" -> "そ"
-            "サ" -> "ザ"
-            "ザ" -> "サ"
-            "シ" -> "ジ"
-            "ジ" -> "修"
-            "修" -> "シ"
-            "斯" -> "ズ"
-            "动" -> "ズ"
-            "还原" -> "ズ"
-            "ス" -> "ズ"
-            "セ" -> "ゼ"
-            "ゼ" -> "赛"
-            "赛" -> "セ"
-            "苏" -> "ゾ"
-            "ソ" -> "ゾ"
-            "ゾ" -> "苏"
-            "た" -> "だ"
-            "だ" -> "た"
-            "ち" -> "ぢ"
-            "ぢ" -> "ち"
-            "て" -> "で"
-            "で" -> "て"
-            "と" -> "ど"
-            "ど" -> "与"
-            "与" -> "ど"
-            "ど" -> "と"
-            "タ" -> "ダ"
-            "ダ" -> "タ"
-            "チ" -> "ヂ"
-            "ヂ" -> "チ"
-            "テ" -> "デ"
-            "デ" -> "テ"
-            "制造" -> "ド"
-            "ト" -> "ド"
-            "导" -> "ト"
-            "は" -> "ば"
-            "ば" -> "ぱ"
-            "ぱ" -> "は"
-            "ひ" -> "び"
-            "び" -> "ぴ"
-            "ぴ" -> "ひ"
-            "ふ" -> "ぶ"
-            "ぶ" -> "ぷ"
-            "ぷ" -> "ふ"
-            "へ" -> "べ"
-            "べ" -> "ぺ"
-            "ぺ" -> "へ"
-            "ほ" -> "ぼ"
-            "ぼ" -> "ぽ"
-            "ぽ" -> "ほ"
-            "ハ" -> "バ"
-            "バ" -> "パ"
-            "パ" -> "ハ"
-            "ヒ" -> "ビ"
-            "ビ" -> "ピ"
-            "ピ" -> "ヒ"
-            "飞" -> "ビ"
-            "フ" -> "ブ"
-            "ブ" -> "プ"
-            "プ" -> "フ"
-            "ヘ" -> "ベ"
-            "米" -> "ベ"
-            "ベ" -> "ペ"
-            "ペ" -> "ヘ"
-            "ホ" -> "ボ"
-            "ボ" -> "ポ"
-            "ポ" -> "ホ"
+            "つ" -> "っ"; "っ" -> "つ"
+            "や" -> "ゃ"; "ゃ" -> "や"
+            "ゆ" -> "ゅ"; "ゅ" -> "ゆ"
+            "よ" -> "ょ"; "ょ" -> "よ"
+            "あ" -> "ぁ"; "ぁ" -> "あ"
+            "い" -> "ぃ"; "ぃ" -> "い"
+            "う" -> "ぅ"; "ぅ" -> "う"
+            "え" -> "ぇ"; "ぇ" -> "え"
+            "お" -> "ぉ"; "ぉ" -> "お"
             else -> char
         }
     }
 
     private fun updateDisplayResult() {
-        if (currentInput.isEmpty()) {
-            display.text = ""
-            return
-        }
-
-        if (filteredTexts.isEmpty()) {
+        if (currentInput.isEmpty() || filteredTexts.isEmpty()) {
             display.text = ""
             return
         }
@@ -441,7 +281,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         val goldColor = 0xFFFFD700.toInt()
         val highlightLength = currentInput.length
 
-        if (highlightLength <= spannable.length) {
+        if (highlightLength > 0 && highlightLength <= spannable.length) {
             spannable.setSpan(
                 ForegroundColorSpan(goldColor),
                 0,
@@ -456,9 +296,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         try {
-            if (database?.isOpen == true) {
-                database?.close()
-            }
-        } catch (e: Exception) { }
+            mdxDict?.close()
+        } catch (e: Exception) {}
     }
 }
