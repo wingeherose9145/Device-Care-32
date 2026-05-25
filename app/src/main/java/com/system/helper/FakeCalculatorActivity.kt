@@ -38,7 +38,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var filteredTexts = listOf<String>() 
     private var matchJob: Job? = null
 
-    // 50音图标准矩阵配置（已锁定）
+    // 50音图标准矩阵配置
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", 
         "か", "き", "く", "け", "こ", 
@@ -53,8 +53,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
     )
 
     private val katakanaList = listOf(
-        "ア", "イ", "ウ", "电", "オ",
-        "卡", "キ", "ク", "ケ", "コ",
+        "ア", "イ", "ウ", "エ", "オ",
+        "カ", "キ", "ク", "ケ", "コ",
         "サ", "シ", "ス", "セ", "ソ",
         "タ", "チ", "ツ", "テ", "ト",
         "纳", "ニ", "ヌ", "ネ", "ノ",
@@ -68,7 +68,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var isHiragana = true
     private val buttonList = mutableListOf<MaterialButton>()
 
-    // MDX 二进制实体指针模型：记录解密后的词头及其虚拟内容偏移映射
+    // MDX 二进制实体指针模型
     data class MdxRecordItem(val word: String, val textBody: String = "")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,7 +93,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             true
         }
 
-        // 🚀 后台非阻塞式硬解：直接攻破原始 Encrypted="2" 加密型二进制词库
+        // 后台异步加载词库
         lifecycleScope.launch(Dispatchers.IO) {
             decryptAndBuildEncryptedMdxIndex()
         }
@@ -107,8 +107,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     }
 
     /**
-     * ⚡ 绝密核心：带 128 位异或解密机制的 MDX V2.0 硬件加速解析器 ⚡
-     * 自适应穿透伪装层，通过对撞指针对被扰乱的二进制 Key 块实施流式实时还原解压
+     * ⚡ 精准修正版：突破 Encrypted="2" 混淆链的状态机核心 ⚡
      */
     private fun decryptAndBuildEncryptedMdxIndex() {
         mdxRealMap.clear()
@@ -124,20 +123,17 @@ class FakeCalculatorActivity : AppCompatActivity() {
             // 2. 越过头部描述信息区
             inputStream.skip(headerSize.toLong())
             
-            // 3. 动态建立 256KB 的滑动自旋缓冲区进行特征暴力捕获
+            // 3. 动态建立滑动自旋缓冲区进行解密流捕获
             val scanBuffer = ByteArray(262144) 
             var bytesRead: Int
             
             while (inputStream.read(scanBuffer).also { bytesRead = it } != -1) {
                 var pos = 0
                 while (pos < bytesRead - 16) {
-                    // 自适应对撞：由于存在 Encrypted="2" 的密钥染色，
-                    // 原先的 0x78 0x9C 会被有规律地混淆。
-                    // 状态机通过捕获连续特征或直接利用通用解密钥匙链解除密锁，释放真实的 Zlib 数据流：
                     val b0 = scanBuffer[pos].toInt() and 0xFF
                     val b1 = scanBuffer[pos + 1].toInt() and 0xFF
                     
-                    // 自动执行异或对撞与边界恢复算法来纠正指针
+                    // 异或对撞与边界恢复验证
                     if ((b0 == 0x78 || (b0 xor 0x3B) == 0x78) && 
                         (b1 == 0x9C || b1 == 0x01 || (b1 xor 0x3B) == 0x9C)) {
                         
@@ -145,7 +141,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                             val cleanBlock = ByteArray(bytesRead - pos)
                             System.arraycopy(scanBuffer, pos, cleanBlock, 0, cleanBlock.size)
                             
-                            // 动态修复被加密污染的 Zlib 魔数头
+                            // 动态抹除被保护混淆的干扰码
                             if (cleanBlock[0] != 0x78.toByte()) {
                                 for (k in 0 until minOf(128, cleanBlock.size)) {
                                     cleanBlock[k] = (cleanBlock[k].toInt() xor 0x3B).toByte()
@@ -154,7 +150,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
                             val inflater = Inflater()
                             inflater.setInput(cleanBlock, 0, cleanBlock.size)
-                            val decompressedOutput = ByteArray(524288) // 展开 512KB 缓冲区
+                            val decompressedOutput = ByteArray(524288) 
                             val resultLength = inflater.inflate(decompressedOutput)
                             inflater.end()
 
@@ -162,7 +158,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                                 splitAndExtractDecryptedTokens(decompressedOutput, resultLength)
                             }
                         } catch (e: Exception) {
-                            // 增强防崩溃韧性，若遇到混淆碎片则自动滑向下一个字节
+                            // 遇到混淆块自动越过，抗崩溃保护
                         }
                     }
                     pos++
@@ -170,13 +166,13 @@ class FakeCalculatorActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        } {
+        } finally {
             try { inputStream?.close() } catch (ex: Exception) {}
         }
     }
 
     /**
-     * 🧩 将解密恢复出来的文本块进行精细切片，并自动清理内嵌 HTML 控制噪声
+     * 🧩 将解密解压后的词头进行纯净提取与倒排索引分类归档
      */
     private fun splitAndExtractDecryptedTokens(buffer: ByteArray, length: Int) {
         var idx = 0
@@ -190,21 +186,16 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 if (tokenSize in 1..180) {
                     val rawString = String(buffer, idx + 1, tokenSize, Charsets.UTF_8).trim()
                     
-                    // 智能拦截：排除无意义的空行及词典内置样式标记，精准分离出单词和联带释义
                     if (rawString.isNotEmpty() && !rawString.startsWith("<") && !rawString.startsWith("@")) {
-                        // 寻找可能复合在内部的换行符或样式分隔符，如果没有则整条保存
                         val parts = rawString.split(Regex("[\\n\\r\\\\|\\t]"))
                         val targetWord = parts[0].trim()
                         
                         if (targetWord.isNotEmpty()) {
                             val firstChar = targetWord.first().toString()
-                            // 锁定纯平假名、片假名、日文汉字及英文字头
                             if (firstChar.matches(Regex("[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FA5a-zA-Z]"))) {
                                 if (!mdxRealMap.containsKey(firstChar)) {
                                     mdxRealMap[firstChar] = mutableListOf()
                                 }
-                                
-                                // 提取可能随同块一起解压出来的紧凑释义片段，如果没有，则进行伪装补全
                                 val targetBody = if (parts.size > 1) parts.drop(1).joinToString("\n") else ""
                                 mdxRealMap[firstChar]?.add(MdxRecordItem(targetWord, targetBody))
                             }
@@ -294,8 +285,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
     }
 
     /**
-     * ⚡ 前缀并行流式匹配系统 ⚡
-     * 对接全还原的二进制指针。打字时在 Default 算力线程中高速对齐，同时清洗掉残存的富文本 HTML 代码
+     * ⚡ 前缀实时匹配过滤器 ⚡
      */
     private fun matchAndFilter() {
         matchJob?.cancel()
@@ -319,10 +309,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
                         val word = item.word
                         val rawBody = item.textBody
                         
-                        // 清洗并融合内嵌释义段
                         val cleanBody = if (rawBody.isEmpty()) {
-                            // 部分紧凑型词库的释义放在紧随其后的块中，在此进行完美的格式排版输出
-                            "点击查看详细释义"
+                            "点击查看释义详情"
                         } else {
                             Html.fromHtml(rawBody, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                         }
@@ -331,7 +319,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
                     }
             }
 
-            // 限制单次最大展示 20 条，维持 ScrollView 的极速滑动体验
             filteredTexts = matchedList.take(20)
             updateDisplayResult()
         }
@@ -369,12 +356,13 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ァ" -> "ア"
             "イ" -> "ィ"
             "ィ" -> "イ"
+            "乌" -> "ゥ"
             "ウ" -> "ゥ"
-            "ゥ" -> "ウ"
+            "ゥ" -> "乌"
+            "工" -> "ェ"
             "エ" -> "ェ"
             "ェ" -> "エ"
-            "テ" -> "デ"
-            "デ" -> "テ"
+            "开" -> "テ"
             "オ" -> "ォ"
             "ォ" -> "オ"
             "か" -> "が"
@@ -387,9 +375,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "げ" -> "け"
             "こ" -> "ご"
             "ご" -> "こ"
-            "卡" -> "ガ"
+            
             "カ" -> "ガ"
             "ガ" -> "カ"
+            
             "キ" -> "ギ"
             "ギ" -> "キ"
             "ク" -> "グ"
@@ -414,8 +403,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ジ" -> "シ"
             "ス" -> "ズ"
             "ズ" -> "ス"
+           
             "セ" -> "ゼ"
             "ゼ" -> "セ"
+           
             "ソ" -> "ゾ"
             "ゾ" -> "ソ"
             "た" -> "だ"
@@ -479,14 +470,12 @@ class FakeCalculatorActivity : AppCompatActivity() {
             return
         }
 
-        // 联合渲染
         val combinedText = filteredTexts.joinToString(separator = "\n\n")
         val spannable = SpannableString(combinedText)
         
         val goldColor = 0xFFFFD700.toInt()
         val highlightLength = currentInput.length
 
-        // 输入词前缀金色高亮
         if (highlightLength <= spannable.length) {
             spannable.setSpan(
                 ForegroundColorSpan(goldColor),
