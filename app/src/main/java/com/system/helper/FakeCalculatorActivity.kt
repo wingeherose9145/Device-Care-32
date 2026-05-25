@@ -1,6 +1,7 @@
 package com.system.helper
 
 import android.content.Intent
+import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.text.Html
 import android.text.SpannableString
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import mdict.mdict  // mdict-java 核心类
+import java.util.zip.ZipInputStream
 
 class FakeCalculatorActivity : AppCompatActivity() {
 
@@ -35,7 +36,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var filteredTexts = listOf<String>() 
     private var matchJob: Job? = null
 
-    // 50音图（已修正片假名错字）
+    private var database: SQLiteDatabase? = null
+
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", 
         "か", "き", "く", "け", "こ", 
@@ -65,9 +67,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var isHiragana = true
     private val buttonList = mutableListOf<MaterialButton>()
 
-    // MDX 字典
-    private var mdxDict: mdict? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -78,22 +77,14 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setContentView(R.layout.activity_fake_calculator)
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
-        
-        searchBar.setOnClickListener {
-            currentInput = ""
-            matchAndFilter()
-        }
 
-        display.setOnLongClickListener {
-            currentInput = ""
-            matchAndFilter()
-            true
-        }
-
-        // 异步加载 MDX
+        // 异步解压数据库
         lifecycleScope.launch(Dispatchers.IO) {
-            setupMdxDictionary()
+            setupDatabase()
         }
+
+        searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
+        display.setOnLongClickListener { currentInput = ""; matchAndFilter(); true }
 
         searchBar.text = ""
         display.text = ""
@@ -103,45 +94,46 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    private fun setupMdxDictionary() {
+    private fun setupDatabase() {
         try {
-            val mdxFile = File(getExternalFilesDir(null), "japanese_dict.mdx")
-            
-            if (!mdxFile.exists()) {
-                Log.d("MDX", "正在从 assets 复制 japanese_dict.mdx...")
-                assets.open("japanese_dict.mdx").use { input ->
-                    FileOutputStream(mdxFile).use { output ->
-                        input.copyTo(output)
+            val dbFile = getDatabasePath("dict.db")
+            if (!dbFile.exists()) {
+                assets.open("dict.zip").use { zipStream ->
+                    val zis = ZipInputStream(zipStream)
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (entry.name.endsWith(".db")) {
+                            FileOutputStream(dbFile).use { out ->
+                                zis.copyTo(out)
+                            }
+                            break
+                        }
+                        entry = zis.nextEntry
                     }
                 }
+                Log.d("DB", "数据库解压完成")
             }
 
-            mdxDict = mdict(mdxFile.absolutePath)
-            Log.d("MDX", "✅ MDX 字典加载成功！总词条数: ${mdxDict?.entryCount() ?: 0}")
-            
+            database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            Log.d("DB", "数据库加载成功")
         } catch (e: Exception) {
-            Log.e("MDX", "❌ MDX 加载失败", e)
+            Log.e("DB", "数据库加载失败", e)
         }
     }
 
-    private fun scanAllButtons(view: View) {
-        if (view is MaterialButton) {
-            buttonList.add(view)
-        } else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                scanAllButtons(view.getChildAt(i))
-            }
+    private fun scanAllButtons(view: View) { /* 保持不变 */ 
+        if (view is MaterialButton) buttonList.add(view)
+        else if (view is ViewGroup) {
+            for (i in 0 until view.childCount) scanAllButtons(view.getChildAt(i))
         }
     }
 
-    private fun refreshButtonLabels() {
-        val currentAlphabet = if (isHiragana) hiraganaList else katakanaList
-        val maxIndex = minOf(buttonList.size, currentAlphabet.size)
-
-        for (i in 0 until maxIndex) {
-            val button = buttonList[i]
-            button.text = currentAlphabet[i]
-            button.setOnClickListener { handleButtonClick(currentAlphabet[i]) }
+    private fun refreshButtonLabels() { /* 保持不变 */ 
+        val list = if (isHiragana) hiraganaList else katakanaList
+        for (i in 0 until minOf(buttonList.size, list.size)) {
+            val btn = buttonList[i]
+            btn.text = list[i]
+            btn.setOnClickListener { handleButtonClick(list[i]) }
         }
     }
 
@@ -157,20 +149,12 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun handleButtonClick(value: String) {
         when (value) {
-            "删除" -> {
-                if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
-            }
+            "删除" -> if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
             "ー" -> currentInput += "ー"
-            "假名" -> {
-                isHiragana = !isHiragana
-                refreshButtonLabels()
-                return
-            }
-            "促音" -> {
-                if (currentInput.isNotEmpty()) {
-                    val last = currentInput.last().toString()
-                    currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
-                }
+            "假名" -> { isHiragana = !isHiragana; refreshButtonLabels(); return }
+            "促音" -> if (currentInput.isNotEmpty()) {
+                val last = currentInput.last().toString()
+                currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
             }
             else -> {
                 currentInput += value
@@ -195,53 +179,34 @@ class FakeCalculatorActivity : AppCompatActivity() {
         searchBar.text = currentInput
 
         matchJob = lifecycleScope.launch {
-            val matchedList = withContext(Dispatchers.Default) {
-                val results = mutableListOf<String>()
-                mdxDict?.let { dict ->
+            val results = withContext(Dispatchers.Default) {
+                val list = mutableListOf<String>()
+                database?.let { db ->
                     try {
-                        val pos = dict.lookUp(currentInput, true)
-                        if (pos >= 0) {
-                            val word = dict.getEntryAt(pos)
-                            val content = dict.getRecordAt(pos)
-                            val clean = Html.fromHtml(content, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-                            results.add("【$word】\n$clean")
-                        } else {
-                            // 模糊搜索
-                            val keys = dict.flowerFindAllKeys(currentInput, 12)
-                            for (key in keys.take(8)) {
-                                val p = dict.lookUp(key, true)
-                                if (p >= 0) {
-                                    val content = dict.getRecordAt(p)
-                                    val clean = Html.fromHtml(content, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-                                    results.add("【$key】\n$clean")
-                                }
-                            }
+                        val cursor = db.rawQuery("SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 15", 
+                            arrayOf("$currentInput%"))
+                        while (cursor.moveToNext()) {
+                            val word = cursor.getString(0) ?: ""
+                            val text = cursor.getString(1) ?: ""
+                            val clean = Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                            list.add("【$word】\n$clean")
                         }
+                        cursor.close()
                     } catch (e: Exception) {
-                        Log.e("MDX", "查询出错", e)
+                        Log.e("Query", "查询失败", e)
                     }
                 }
-                results
+                list
             }
-
-            filteredTexts = matchedList
+            filteredTexts = results
             updateDisplayResult()
         }
     }
 
-    private fun convertToTransformChar(char: String): String {
-        return when (char) {
-            "つ" -> "っ", "っ" -> "つ",
-            "や" -> "ゃ", "ゃ" -> "や",
-            "ゆ" -> "ゅ", "ゅ" -> "ゆ",
-            "よ" -> "ょ", "ょ" -> "よ",
-            "あ" -> "ぁ", "ぁ" -> "あ",
-            "い" -> "ぃ", "ぃ" -> "い",
-            "う" -> "ぅ", "ぅ" -> "う",
-            "え" -> "ぇ", "ぇ" -> "え",
-            "お" -> "ぉ", "ぉ" -> "お",
-            else -> char
-        }
+    private fun convertToTransformChar(char: String): String = when (char) {
+        "つ" -> "っ", "っ" -> "つ", "や" -> "ゃ", "ゃ" -> "や",
+        "ゆ" -> "ゅ", "ゅ" -> "ゆ", "よ" -> "ょ", "ょ" -> "よ",
+        else -> char
     }
 
     private fun updateDisplayResult() {
@@ -249,20 +214,17 @@ class FakeCalculatorActivity : AppCompatActivity() {
             display.text = ""
             return
         }
-
         val text = filteredTexts.joinToString("\n\n")
         val spannable = SpannableString(text)
         val gold = 0xFFFFD700.toInt()
-
         if (currentInput.length <= text.length) {
             spannable.setSpan(ForegroundColorSpan(gold), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-
         display.text = spannable
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        mdxDict?.close()
+        database?.close()
     }
 }
