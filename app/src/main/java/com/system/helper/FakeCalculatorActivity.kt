@@ -47,17 +47,17 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
-        "な", "に", "ぬ", "ね", "进", "は", "ひ", "ふ", "へ", "ほ", 
-        "ま", "み", "む", "め", "mo", "や", "ゆ", "よ", "删除", "ー", 
+        "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
+        "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
     private val katakanaList = listOf(
         "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
-        "サ", "西", "斯", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
-        "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
-        "马", "ミ", "ム", "メ", "モ", "亚", "ユ", "ヨ", "删除", "ー",
-        "拉", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "变音"
+        "サ", "シ", "ス", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
+        "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "享", "ヘ", "ホ",
+        "マ", "ミ", "ム", "美", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
+        "ラ", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "变音"
     )
 
     private var isHiragana = true
@@ -74,7 +74,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        lifecycleScope.launch(Dispatchers.IO) { initDatabase() }
+        lifecycleScope.launch(Dispatchers.IO) { initDatabaseAndDumpSample() }
 
         searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
         
@@ -96,7 +96,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    private fun initDatabase() {
+    // ✨ 核心改变：加载数据库后，强行盲读前 3 条数据打印出来看看到底是什么鬼
+    private fun initDatabaseAndDumpSample() {
         try {
             val dbFile = getDatabasePath("dict.db")
             if (!dbFile.exists()) {
@@ -108,8 +109,23 @@ class FakeCalculatorActivity : AppCompatActivity() {
             database = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY)
             isDbReady = true
             
+            // 🕵️‍♂️ 开始盲读取样
+            val sampleList = mutableListOf<String>()
+            try {
+                val cursor = database!!.rawQuery("SELECT $detectedWordColumn, $detectedDefColumn FROM $detectedTableName LIMIT 3", null)
+                while (cursor.moveToNext()) {
+                    val w = cursor.getString(0) ?: "[空]"
+                    val d = cursor.getString(1) ?: "[空]"
+                    sampleList.add("单词列: $w\n释义列: ${if(d.length > 60) d.take(60) + "..." else d}")
+                }
+                cursor.close()
+            } catch(e: Exception) {
+                sampleList.add("盲读取样失败: ${e.message}")
+            }
+
             runOnUiThread {
-                display.text = "词库准备就绪！\n请开始输入假名查词。"
+                val sampleText = sampleList.joinToString("\n---\n")
+                display.text = "【数据库前3条样本直击】\n\n$sampleText\n\n====================\n请输入假名测试查询。"
             }
         } catch (e: Exception) {
             Log.e("SQL_DB", "数据库加载异常", e)
@@ -191,14 +207,14 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ぜ" -> "せ"
             "そ" -> "ぞ"
             "ぞ" -> "そ"
-            "ta" -> "だ"
+            "た" -> "だ"
             "だ" -> "た"
             "ち" -> "ぢ"
             "ぢ" -> "ち"
             "て" -> "で"
             "て" -> "で"
-            "と" -> "ど"
-            "ど" -> "与"
+            "to" -> "ど"
+            "ど" -> "と"
             "は" -> "ば"
             "ば" -> "ぱ"
             "ぱ" -> "は"
@@ -229,7 +245,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
         if (currentInput.isEmpty()) {
             searchBar.text = ""
-            display.text = "请在下方输入假名进行查词"
+            matchJob = lifecycleScope.launch { initDatabaseAndDumpSample() }
             return
         }
 
@@ -241,7 +257,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 
                 if (isDbReady && database != null) {
                     try {
-                        // ✨ 修复点：正确地将变量拼写更正为 $detectedTableName
                         val querySQL = "SELECT $detectedWordColumn, $detectedDefColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? OR $detectedDefColumn LIKE ? LIMIT 15"
                         val keyword = "%$currentInput%"
                         val cursor = database!!.rawQuery(querySQL, arrayOf(keyword, keyword))
@@ -262,7 +277,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             }
             
             if (results.isEmpty()) {
-                display.text = "未找到匹配词条\n(已检索 word 与 definition 字段)"
+                display.text = "未找到匹配词条\n(输入: $currentInput)"
             } else {
                 val combined = results.joinToString("\n\n")
                 val spannable = SpannableString(combined)
