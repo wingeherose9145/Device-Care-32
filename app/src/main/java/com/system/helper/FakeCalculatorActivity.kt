@@ -41,16 +41,16 @@ class FakeCalculatorActivity : AppCompatActivity() {
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
         "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
-        "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
+        "ま", "み", "む", "め", "做", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "促音" 
     )
 
     private val katakanaList = listOf(
-        "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
-        "サ", "シ", "ス", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
+        "ア", "イ", "ウ", "エ", "オ", "卡", "キ", "ク", "ケ", "コ",
+        "サ", "シ", "斯", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
         "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
-        "ラ", "リ", "ル", "レ", "ロ", "ワ", "ヲ", "ン", "假名", "促音"
+        "拉", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "促音"
     )
 
     private var isHiragana = true
@@ -85,6 +85,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
             val dbFile = getDatabasePath("dict.db")
             if (!dbFile.exists()) {
                 Log.d("DB", "正在解压 dict.zip...")
+                
+                // ✨ 修复 1：强制确保父级目录（databases 文件夹）存在，防止写入时抛出 FileNotFoundException
+                dbFile.parentFile?.mkdirs()
+
                 assets.open("dict.zip").use { assetStream ->
                     ZipInputStream(assetStream).use { zipInput ->
                         var entry = zipInput.nextEntry
@@ -105,6 +109,19 @@ class FakeCalculatorActivity : AppCompatActivity() {
             if (dbFile.exists()) {
                 database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
                 Log.d("DB", "✅ 数据库加载成功")
+                
+                // ✨ 调试日志：检查数据库解压后里面到底有几条数据
+                database?.let { db ->
+                    try {
+                        val testCursor = db.rawQuery("SELECT COUNT(*) FROM dictionary", null)
+                        if (testCursor.moveToFirst()) {
+                            Log.d("DB_CHECK", "【重要数据】当前 dictionary 表内共有数据: ${testCursor.getInt(0)} 条")
+                        }
+                        testCursor.close()
+                    } catch (e: Exception) {
+                        Log.e("DB_CHECK", "❌ 无法查询 COUNT(*)，表名 dictionary 可能不存在或字段对齐损坏", e)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e("DB", "❌ 数据库加载失败", e)
@@ -201,9 +218,10 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 val list = mutableListOf<String>()
                 database?.let { db ->
                     try {
+                        // ✨ 修复 2：将模糊通配符修改为标准 SQLite 的 `LIKE ? || '%'` 拼接，确保对日语假名的前缀匹配支持
                         val cursor = db.rawQuery(
-                            "SELECT word, definition FROM dictionary WHERE word LIKE ? LIMIT 15", 
-                            arrayOf("$currentInput%")
+                            "SELECT word, definition FROM dictionary WHERE word LIKE ? || '%' LIMIT 15", 
+                            arrayOf(currentInput)
                         )
                         while (cursor.moveToNext()) {
                             val word = cursor.getString(0) ?: ""
