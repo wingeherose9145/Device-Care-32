@@ -4,12 +4,12 @@ plugins {
 }
 
 android {
-    namespace 'com.system.helper'
+    namespace 'com.system.dict'
 
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.system.helper.calc"
+        applicationId "com.system.dict.calc"
         minSdk 24
         targetSdk 34
 
