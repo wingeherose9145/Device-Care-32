@@ -6,10 +6,6 @@ import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.text.Html
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.style.BackgroundColorSpan
-import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -23,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.io.FileOutputStream
 
 class FakeCalculatorActivity : AppCompatActivity() {
@@ -47,17 +42,17 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
-        "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
+        "な", "に", "ぬ", "ね", "之", "は", "ひ", "ふ", "へ", "ほ", 
         "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
     private val katakanaList = listOf(
-        "ア", "イ", "ウ", "电", "オ", "カ", "キ", "ク", "ケ", "コ",
-        "サ", "シ", "ス", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
-        "ナ", "ニ", "努", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
+        "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
+        "サ", "シ", "ス", "セ", "そ", "タ", "チ", "ツ", "テ", "ト",
+        "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
         "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
-        "拉", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "变音"
+        "ラ", "リ", "ル", "レ", "ロ", "ワ", "ヲ", "ン", "假名", "变音"
     )
 
     private var isHiragana = true
@@ -196,7 +191,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ち" -> "ぢ"
             "ぢ" -> "ち"
             "て" -> "で"
-            "て" -> "で"
             "と" -> "ど"
             "ど" -> "と"
             "は" -> "ば"
@@ -214,7 +208,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ほ" -> "ぼ"
             "ぼ" -> "ぽ"
             "ぽ" -> "ほ"
-            "や" -> "ゃ"
+            "я" -> "ゃ"
             "ゃ" -> "や"
             "ゆ" -> "ゅ"
             "ゅ" -> "ゆ"
@@ -224,7 +218,34 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
     }
 
-    // ✨ 终极黑科技：利用 SQLite 的 SUBSTR() 函数进行轻量级切片模糊匹配，安全跨越 2MB 限制
+    // 针对原始词典自定义 HTML 标签的清洗与排版规范化预处理器
+    private fun preprocessHtml(word: String, rawHtml: String): String {
+        var html = rawHtml
+
+        // 1. 过滤不兼容的外部 CSS 外链样式
+        html = html.replace(Regex("<link[^>]*>"), "")
+
+        // 2. 规范化词头 <h3>：转为标准加粗并强制分离换行
+        html = html.replace("<h3>", "<br/><b>")
+        html = html.replace("</h3>", "</b><br/>")
+
+        // 3. 规范化日语例句标签 <jae>：行首缩进，加粗强调
+        html = html.replace("<jae>", "<br/>&nbsp;&nbsp;•&nbsp;<b>")
+        html = html.replace("</jae>", "</b>")
+
+        // 4. 规范化中文解释标签 <ja_cn>：行首缩进，使用弱灰色区分，作为例句的附属属性
+        html = html.replace("<ja_cn>", "<br/>&nbsp;&nbsp;&nbsp;&nbsp;<font color='#808080'>")
+        html = html.replace("</ja_cn>", "</font>")
+
+        // 5. 转换语义块标签 <span type="...">：通过【】实体符号建立清晰的内容边界
+        html = html.replace(Regex("<span[^>]*>"), "【")
+        html = html.replace("</span>", "】")
+
+        // 返回包含主词头和清洗排版后 HTML 的复合字符串
+        return "<b>【$word】</b>$html"
+    }
+
+    // 利用 SQLite 的 SUBSTR() 函数进行轻量级切片模糊匹配，安全跨越 2MB 限制并完美展现格式层级
     private fun matchAndFilter() {
         matchJob?.cancel()
 
@@ -242,8 +263,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 
                 if (isDbReady && database != null) {
                     try {
-                        // 🟢 核心改动：利用 SUBSTR 只截取 definition 前 150 个字符拉入内存匹配
-                        // 这样既能搜索到隐藏在释义开头的假名注音，又把单行体积限制在几个字节，永不触发 Row too big！
+                        // 🟢 核心切片逻辑：利用 SUBSTR 只截取前 150 个字符拉入内存匹配，保障单行体积不崩溃
                         val querySQL = "SELECT $detectedWordColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? OR SUBSTR($detectedDefColumn, 1, 150) LIKE ? LIMIT 15"
                         val keyword = "%$currentInput%"
                         val cursor = database!!.rawQuery(querySQL, arrayOf(keyword, keyword))
@@ -255,7 +275,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                         }
                         cursor.close()
 
-                        // 🟢 分步精准拉取详细释义
+                        // 🟢 分步精准拉取详细释义的原始 XML/HTML 串
                         for (wordItem in matchedWords) {
                             try {
                                 val singleCursor = database!!.rawQuery(
@@ -264,14 +284,21 @@ class FakeCalculatorActivity : AppCompatActivity() {
                                 )
                                 if (singleCursor.moveToFirst()) {
                                     val definition = singleCursor.getString(0) ?: ""
-                                    val cleanDef = Html.fromHtml(definition, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-                                    // 限制单条显示字数，防止长文本在手机渲染时卡顿
-                                    val safeDef = if (cleanDef.length > 600) cleanDef.take(600) + "\n...(内容过多，已截断显示)" else cleanDef
-                                    list.add("【$wordItem】\n$safeDef")
+                                    
+                                    // 🟢 调用 HTML 标签规范器清洗词条
+                                    val formattedHtml = preprocessHtml(wordItem, definition)
+                                    
+                                    // 限制单条最长显示容量，避免特长解释渲染卡顿
+                                    val safeHtml = if (formattedHtml.length > 3000) {
+                                        formattedHtml.take(3000) + "<br/><font color='red'>...(内容过多，已截断显示)</font>"
+                                    } else {
+                                        formattedHtml
+                                    }
+                                    list.add(safeHtml)
                                 }
                                 singleCursor.close()
                             } catch (e: Exception) {
-                                list.add("【$wordItem】\n[⚠️ 该词条单行过大，Android 系统限制载入]")
+                                list.add("<b>【$wordItem】</b><br/><font color='red'>[⚠️ 该词条单行过大，Android 系统限制载入]</font>")
                             }
                         }
                     } catch (e: Exception) {
@@ -281,36 +308,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 list
             }
             
-            // UI 更新与高亮
+            // UI 更新与系统级 HTML 渲染映射
             if (results.isEmpty()) {
                 display.text = "未找到匹配词条\n(已检索汉字列及释义注音区)"
             } else {
-                val combined = results.joinToString("\n\n")
-                val spannable = SpannableString(combined)
+                // 1. 各词条之间使用标准细线标签 <hr/> 进行解耦隔离
+                val combinedHtml = results.joinToString("<br/><br/><hr/><br/>")
                 
-                val goldColor = 0xFFFFD700.toInt()
-                val itemBgColor = 0x1AFFFFFF.toInt() 
-
-                if (currentInput.length <= combined.length) {
-                    spannable.setSpan(ForegroundColorSpan(goldColor), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-                
-                var currentIndex = 0
-                for (text in results) {
-                    val start = currentIndex
-                    val end = currentIndex + text.length
-                    if (end <= spannable.length) {
-                        spannable.setSpan(BackgroundColorSpan(itemBgColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    }
-                    currentIndex = end + 2 
-                }
-                display.text = spannable
-            }
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        database?.close()
-    }
-}
+                // 2. ⚠️ 核心修正：利用 Android 原生机制解析为 Spanned，完美传承
