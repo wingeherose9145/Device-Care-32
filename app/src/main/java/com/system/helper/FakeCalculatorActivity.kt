@@ -110,13 +110,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
             if (dbFile.exists()) {
                 database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
                 Log.d("DB", "✅ 数据库打开成功")
-
-                // 检查表结构
-                val cursor = database!!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null)
-                while (cursor.moveToNext()) {
-                    Log.d("DB", "找到表: ${cursor.getString(0)}")
-                }
-                cursor.close()
             }
         } catch (e: Exception) {
             Log.e("DB", "❌ 数据库初始化失败", e)
@@ -124,9 +117,12 @@ class FakeCalculatorActivity : AppCompatActivity() {
     }
 
     private fun scanAllButtons(view: View) {
-        if (view is MaterialButton) buttonList.add(view)
-        else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) scanAllButtons(view.getChildAt(i))
+        if (view is MaterialButton) {
+            buttonList.add(view)
+        } else if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                scanAllButtons(view.getChildAt(i))
+            }
         }
     }
 
@@ -153,7 +149,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
         when (value) {
             "删除" -> if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
             "ー" -> currentInput += "ー"
-            "假名" -> { isHiragana = !isHiragana; refreshButtonLabels(); return }
+            "假名" -> {
+                isHiragana = !isHiragana
+                refreshButtonLabels()
+                return
+            }
             "促音" -> if (currentInput.isNotEmpty()) {
                 val last = currentInput.last().toString()
                 currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
@@ -170,15 +170,24 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun convertToTransformChar(char: String): String {
         return when (char) {
-            "つ" -> "っ", "っ" -> "つ",
-            "や" -> "ゃ", "ゃ" -> "や",
-            "ゆ" -> "ゅ", "ゅ" -> "ゆ",
-            "よ" -> "ょ", "ょ" -> "よ",
-            "あ" -> "ぁ", "ぁ" -> "あ",
-            "い" -> "ぃ", "ぃ" -> "い",
-            "う" -> "ぅ", "ぅ" -> "う",
-            "え" -> "ぇ", "ぇ" -> "え",
-            "お" -> "ぉ", "ぉ" -> "お",
+            "つ" -> "っ"
+            "っ" -> "つ"
+            "や" -> "ゃ"
+            "ゃ" -> "や"
+            "ゆ" -> "ゅ"
+            "ゅ" -> "ゆ"
+            "よ" -> "ょ"
+            "ょ" -> "よ"
+            "あ" -> "ぁ"
+            "ぁ" -> "あ"
+            "い" -> "ぃ"
+            "ぃ" -> "い"
+            "う" -> "ぅ"
+            "ぅ" -> "う"
+            "え" -> "ぇ"
+            "ぇ" -> "え"
+            "お" -> "ぉ"
+            "ぉ" -> "お"
             else -> char
         }
     }
@@ -194,17 +203,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
 
         searchBar.text = currentInput
-        Log.d("QUERY", "正在查询: '$currentInput'")
+        Log.d("QUERY", "查询: '$currentInput'")
 
         matchJob = lifecycleScope.launch {
             val results = withContext(Dispatchers.Default) {
                 val list = mutableListOf<String>()
                 database?.let { db ->
                     try {
-                        val cursor = db.rawQuery("SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 10", 
+                        val cursor = db.rawQuery("SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 15", 
                             arrayOf("$currentInput%"))
-                        Log.d("QUERY", "执行SQL: LIKE '$currentInput%'")
-                        
                         var count = 0
                         while (cursor.moveToNext()) {
                             val word = cursor.getString(0) ?: ""
@@ -212,17 +219,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
                             val clean = Html.fromHtml(rawText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                             list.add("【$word】\n$clean")
                             count++
-                            Log.d("QUERY", "找到: $word")
                         }
                         cursor.close()
-                        Log.d("QUERY", "本次查询找到 $count 条结果")
+                        Log.d("QUERY", "找到 $count 条结果")
                     } catch (e: Exception) {
-                        Log.e("QUERY", "SQL查询异常", e)
+                        Log.e("QUERY", "查询失败", e)
                     }
                 }
                 list
             }
-
             filteredTexts = results
             updateDisplayResult()
         }
