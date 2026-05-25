@@ -83,41 +83,50 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private fun setupDatabase() {
         try {
             val dbFile = getDatabasePath("dict.db")
+            Log.d("DB", "数据库路径: ${dbFile.absolutePath}")
+
             if (!dbFile.exists()) {
-                Log.d("DB", "正在解压 dict.zip...")
+                Log.d("DB", "开始解压 dict.zip...")
                 assets.open("dict.zip").use { assetStream ->
                     ZipInputStream(assetStream).use { zipInput ->
                         var entry = zipInput.nextEntry
                         while (entry != null) {
+                            Log.d("DB", "ZIP Entry: ${entry.name}")
                             if (entry.name.endsWith(".db")) {
                                 FileOutputStream(dbFile).use { output ->
                                     zipInput.copyTo(output)
                                 }
-                                Log.d("DB", "解压完成，大小: ${dbFile.length()} bytes")
+                                Log.d("DB", "✅ 解压成功，大小: ${dbFile.length()} bytes")
                                 break
                             }
                             entry = zipInput.nextEntry
                         }
                     }
                 }
+            } else {
+                Log.d("DB", "数据库已存在，大小: ${dbFile.length()} bytes")
             }
 
             if (dbFile.exists()) {
                 database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                Log.d("DB", "✅ 数据库加载成功")
+                Log.d("DB", "✅ 数据库打开成功")
+
+                // 检查表结构
+                val cursor = database!!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null)
+                while (cursor.moveToNext()) {
+                    Log.d("DB", "找到表: ${cursor.getString(0)}")
+                }
+                cursor.close()
             }
         } catch (e: Exception) {
-            Log.e("DB", "❌ 数据库加载失败", e)
+            Log.e("DB", "❌ 数据库初始化失败", e)
         }
     }
 
     private fun scanAllButtons(view: View) {
-        if (view is MaterialButton) {
-            buttonList.add(view)
-        } else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                scanAllButtons(view.getChildAt(i))
-            }
+        if (view is MaterialButton) buttonList.add(view)
+        else if (view is ViewGroup) {
+            for (i in 0 until view.childCount) scanAllButtons(view.getChildAt(i))
         }
     }
 
@@ -144,11 +153,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         when (value) {
             "删除" -> if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
             "ー" -> currentInput += "ー"
-            "假名" -> {
-                isHiragana = !isHiragana
-                refreshButtonLabels()
-                return
-            }
+            "假名" -> { isHiragana = !isHiragana; refreshButtonLabels(); return }
             "促音" -> if (currentInput.isNotEmpty()) {
                 val last = currentInput.last().toString()
                 currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
@@ -165,24 +170,15 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun convertToTransformChar(char: String): String {
         return when (char) {
-            "つ" -> "っ"
-            "っ" -> "つ"
-            "や" -> "ゃ"
-            "ゃ" -> "や"
-            "ゆ" -> "ゅ"
-            "ゅ" -> "ゆ"
-            "よ" -> "ょ"
-            "ょ" -> "よ"
-            "あ" -> "ぁ"
-            "ぁ" -> "あ"
-            "い" -> "ぃ"
-            "ぃ" -> "い"
-            "う" -> "ぅ"
-            "ぅ" -> "う"
-            "え" -> "ぇ"
-            "ぇ" -> "え"
-            "お" -> "ぉ"
-            "ぉ" -> "お"
+            "つ" -> "っ", "っ" -> "つ",
+            "や" -> "ゃ", "ゃ" -> "や",
+            "ゆ" -> "ゅ", "ゅ" -> "ゆ",
+            "よ" -> "ょ", "ょ" -> "よ",
+            "あ" -> "ぁ", "ぁ" -> "あ",
+            "い" -> "ぃ", "ぃ" -> "い",
+            "う" -> "ぅ", "ぅ" -> "う",
+            "え" -> "ぇ", "ぇ" -> "え",
+            "お" -> "ぉ", "ぉ" -> "お",
             else -> char
         }
     }
@@ -198,27 +194,35 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
 
         searchBar.text = currentInput
+        Log.d("QUERY", "正在查询: '$currentInput'")
 
         matchJob = lifecycleScope.launch {
             val results = withContext(Dispatchers.Default) {
                 val list = mutableListOf<String>()
                 database?.let { db ->
                     try {
-                        val cursor = db.rawQuery("SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 15", 
+                        val cursor = db.rawQuery("SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 10", 
                             arrayOf("$currentInput%"))
+                        Log.d("QUERY", "执行SQL: LIKE '$currentInput%'")
+                        
+                        var count = 0
                         while (cursor.moveToNext()) {
                             val word = cursor.getString(0) ?: ""
                             val rawText = cursor.getString(1) ?: ""
                             val clean = Html.fromHtml(rawText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                             list.add("【$word】\n$clean")
+                            count++
+                            Log.d("QUERY", "找到: $word")
                         }
                         cursor.close()
+                        Log.d("QUERY", "本次查询找到 $count 条结果")
                     } catch (e: Exception) {
-                        Log.e("Query", "查询失败", e)
+                        Log.e("QUERY", "SQL查询异常", e)
                     }
                 }
                 list
             }
+
             filteredTexts = results
             updateDisplayResult()
         }
@@ -226,14 +230,14 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun updateDisplayResult() {
         if (filteredTexts.isEmpty()) {
-            display.text = "未找到匹配词条"
+            display.text = "未找到匹配词条\n(输入: $currentInput)"
             return
         }
         val combined = filteredTexts.joinToString("\n\n")
         val spannable = SpannableString(combined)
         val goldColor = 0xFFFFD700.toInt()
 
-        if (currentInput.isNotEmpty() && currentInput.length <= combined.length) {
+        if (currentInput.length <= combined.length) {
             spannable.setSpan(ForegroundColorSpan(goldColor), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         display.text = spannable
