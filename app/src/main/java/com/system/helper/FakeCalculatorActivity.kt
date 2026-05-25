@@ -1,9 +1,7 @@
 package com.system.helper
 
 import android.content.Intent
-import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
-import android.text.Html
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -19,8 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.FileOutputStream
-import java.util.zip.ZipInputStream
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class FakeCalculatorActivity : AppCompatActivity() {
 
@@ -35,21 +33,23 @@ class FakeCalculatorActivity : AppCompatActivity() {
     private var filteredTexts = listOf<String>() 
     private var matchJob: Job? = null
 
-    private var database: SQLiteDatabase? = null
+    // 内存数据结构：高效率 K-V 词典（使用高效的 HashMap 应对 30M+ 级别的大文本内存常驻）
+    private val dictionaryMap = mutableMapOf<String, String>()
+    private var isDictionaryLoaded = false
 
     private val hiraganaList = listOf(
         "あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ", 
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
         "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
-        "ま", "み", "む", "め", "做", "や", "ゆ", "よ", "删除", "ー", 
+        "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
         "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "促音" 
     )
 
     private val katakanaList = listOf(
-        "ア", "イ", "ウ", "エ", "オ", "卡", "キ", "ク", "ケ", "コ",
-        "サ", "シ", "斯", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
+        "ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
+        "サ", "シ", "ス", "セ", "ソ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
-        "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
+        "マ", "ミ", "ム", "美", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
         "拉", "リ", "ル", "レ", "ロ", "哇", "ヲ", "ン", "假名", "促音"
     )
 
@@ -67,7 +67,8 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        lifecycleScope.launch(Dispatchers.IO) { setupDatabase() }
+        // 异步流式加载清洗后的 32M 纯文本词库
+        lifecycleScope.launch(Dispatchers.IO) { loadTxtDatabase() }
 
         searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
         display.setOnLongClickListener { currentInput = ""; matchAndFilter(); true }
@@ -80,51 +81,37 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    private fun setupDatabase() {
+    // 针对大文件优化的流式装载逻辑
+    private fun loadTxtDatabase() {
         try {
-            val dbFile = getDatabasePath("dict.db")
-            if (!dbFile.exists()) {
-                Log.d("DB", "正在解压 dict.zip...")
-                
-                // ✨ 修复 1：强制确保父级目录（databases 文件夹）存在，防止写入时抛出 FileNotFoundException
-                dbFile.parentFile?.mkdirs()
-
-                assets.open("dict.zip").use { assetStream ->
-                    ZipInputStream(assetStream).use { zipInput ->
-                        var entry = zipInput.nextEntry
-                        while (entry != null) {
-                            if (entry.name.endsWith(".db")) {
-                                FileOutputStream(dbFile).use { output ->
-                                    zipInput.copyTo(output)
-                                }
-                                Log.d("DB", "✅ 解压成功，大小: ${dbFile.length()} bytes")
-                                break
-                            }
-                            entry = zipInput.nextEntry
+            Log.d("TXT_DB", "正在从 assets 中加载 32M 精简版 dict.txt...")
+            val startTime = System.currentTimeMillis()
+            
+            assets.open("dict.txt").use { inputStream ->
+                // 使用较大的缓冲区（64KB）提升 IO 读取大文件的性能
+                BufferedReader(InputStreamReader(inputStream, "UTF-8"), 65536).use { reader ->
+                    var line: String?
+                    var count = 0
+                    while (reader.readLine().also { line = it } != null) {
+                        val trimmed = line!!.trim()
+                        if (trimmed.isEmpty()) continue
+                        
+                        // 按照分隔符 ||| 切分单词和释义
+                        val parts = trimmed.split("|||")
+                        if (parts.size >= 2) {
+                            val word = parts[0].trim()
+                            val definition = parts[1].trim()
+                            dictionaryMap[word] = definition
+                            count++
                         }
                     }
-                }
-            }
-
-            if (dbFile.exists()) {
-                database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                Log.d("DB", "✅ 数据库加载成功")
-                
-                // ✨ 调试日志：检查数据库解压后里面到底有几条数据
-                database?.let { db ->
-                    try {
-                        val testCursor = db.rawQuery("SELECT COUNT(*) FROM dictionary", null)
-                        if (testCursor.moveToFirst()) {
-                            Log.d("DB_CHECK", "【重要数据】当前 dictionary 表内共有数据: ${testCursor.getInt(0)} 条")
-                        }
-                        testCursor.close()
-                    } catch (e: Exception) {
-                        Log.e("DB_CHECK", "❌ 无法查询 COUNT(*)，表名 dictionary 可能不存在或字段对齐损坏", e)
-                    }
+                    isDictionaryLoaded = true
+                    val timeTaken = System.currentTimeMillis() - startTime
+                    Log.d("TXT_DB", "✅ 词库成功装载到内存！耗时: ${timeTaken}ms, 总计: $count 条词条")
                 }
             }
         } catch (e: Exception) {
-            Log.e("DB", "❌ 数据库加载失败", e)
+            Log.e("TXT_DB", "❌ 词库加载失败，请检查 assets 目录下是否存在 dict.txt", e)
         }
     }
 
@@ -216,22 +203,21 @@ class FakeCalculatorActivity : AppCompatActivity() {
         matchJob = lifecycleScope.launch {
             val results = withContext(Dispatchers.Default) {
                 val list = mutableListOf<String>()
-                database?.let { db ->
-                    try {
-                        // ✨ 修复 2：将模糊通配符修改为标准 SQLite 的 `LIKE ? || '%'` 拼接，确保对日语假名的前缀匹配支持
-                        val cursor = db.rawQuery(
-                            "SELECT word, definition FROM dictionary WHERE word LIKE ? || '%' LIMIT 15", 
-                            arrayOf(currentInput)
-                        )
-                        while (cursor.moveToNext()) {
-                            val word = cursor.getString(0) ?: ""
-                            val rawText = cursor.getString(1) ?: ""
-                            val clean = Html.fromHtml(rawText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-                            list.add("【$word】\n$clean")
+                
+                if (isDictionaryLoaded) {
+                    var matchCount = 0
+                    for ((word, definition) in dictionaryMap) {
+                        // 模糊匹配：判断输入的假名是否在单词里出现，或者包含在释义中
+                        if (word.contains(currentInput, ignoreCase = true) || 
+                            definition.contains(currentInput, ignoreCase = true)) {
+                            
+                            // 将清洗时保留的文本换行占位符 \\n 重新替换还原为系统真正可解析的 \n
+                            val cleanDef = definition.replace("\\n", "\n").trim()
+                            list.add("【$word】\n$cleanDef")
+                            
+                            matchCount++
+                            if (matchCount >= 15) break // 限制最多展示 15 条，防止极端匹配下内存过载
                         }
-                        cursor.close()
-                    } catch (e: Exception) {
-                        Log.e("QUERY", "查询失败", e)
                     }
                 }
                 list
@@ -258,6 +244,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        database?.close()
+        dictionaryMap.clear()
     }
 }
