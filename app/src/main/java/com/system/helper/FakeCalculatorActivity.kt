@@ -104,7 +104,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
             if (dbFile.exists()) {
                 database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-                Log.d("DB", "✅ 数据库加载成功 (dictionary 表)")
+                Log.d("DB", "✅ 数据库加载成功")
             }
         } catch (e: Exception) {
             Log.e("DB", "❌ 数据库加载失败", e)
@@ -112,12 +112,9 @@ class FakeCalculatorActivity : AppCompatActivity() {
     }
 
     private fun scanAllButtons(view: View) {
-        if (view is MaterialButton) {
-            buttonList.add(view)
-        } else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                scanAllButtons(view.getChildAt(i))
-            }
+        if (view is MaterialButton) buttonList.add(view)
+        else if (view is ViewGroup) {
+            for (i in 0 until view.childCount) scanAllButtons(view.getChildAt(i))
         }
     }
 
@@ -165,15 +162,24 @@ class FakeCalculatorActivity : AppCompatActivity() {
 
     private fun convertToTransformChar(char: String): String {
         return when (char) {
-            "つ" -> "っ", "っ" -> "つ"
-            "や" -> "ゃ", "ゃ" -> "や"
-            "ゆ" -> "ゅ", "ゅ" -> "ゆ"
-            "よ" -> "ょ", "ょ" -> "よ"
-            "あ" -> "ぁ", "ぁ" -> "あ"
-            "い" -> "ぃ", "ぃ" -> "い"
-            "う" -> "ぅ", "ぅ" -> "う"
-            "え" -> "ぇ", "ぇ" -> "え"
-            "お" -> "ぉ", "ぉ" -> "お"
+            "つ" -> "っ"
+            "っ" -> "つ"
+            "や" -> "ゃ"
+            "ゃ" -> "や"
+            "ゆ" -> "ゅ"
+            "ゅ" -> "ゆ"
+            "よ" -> "ょ"
+            "ょ" -> "よ"
+            "あ" -> "ぁ"
+            "ぁ" -> "あ"
+            "い" -> "ぃ"
+            "ぃ" -> "い"
+            "う" -> "ぅ"
+            "ぅ" -> "う"
+            "え" -> "ぇ"
+            "ぇ" -> "え"
+            "お" -> "ぉ"
+            "ぉ" -> "お"
             else -> char
         }
     }
@@ -195,7 +201,6 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 val list = mutableListOf<String>()
                 database?.let { db ->
                     try {
-                        // 使用正确的表名和列名
                         val cursor = db.rawQuery(
                             "SELECT word, definition FROM dictionary WHERE word LIKE ? LIMIT 15", 
                             arrayOf("$currentInput%")
