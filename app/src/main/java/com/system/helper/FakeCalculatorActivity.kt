@@ -260,7 +260,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
             "ソ" -> "ゾ"
             "ゾ" -> "ソ"
             "タ" -> "ダ"
-            "实用" -> "タ"
+            "ダ" -> "タ"
             "チ" -> "ヂ"
             "ヂ" -> "チ"
             "テ" -> "デ"
