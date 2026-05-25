@@ -3,7 +3,6 @@ package com.system.helper
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.text.Html
@@ -50,11 +49,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
         "さ", "し", "す", "せ", "そ", "た", "ち", "つ", "て", "と", 
         "な", "に", "ぬ", "ね", "の", "は", "ひ", "ふ", "へ", "ほ", 
         "ま", "み", "む", "め", "も", "や", "ゆ", "よ", "删除", "ー", 
-        "ら", "理", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
+        "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "假名", "变音" 
     )
 
     private val katakanaList = listOf(
-        "ア", "イ", "乌", "エ", "オ", "カ", "キ", "ク", "ケ", "コ",
+        "ア", "イ", "ウ", "电", "オ", "カ", "キ", "ク", "ケ", "コ",
         "サ", "シ", "ス", "塞", "そ", "タ", "チ", "ツ", "テ", "ト",
         "ナ", "ニ", "努", "ネ", "ノ", "ハ", "ヒ", "フ", "ヘ", "ホ",
         "マ", "ミ", "ム", "メ", "モ", "ヤ", "ユ", "ヨ", "删除", "ー",
@@ -75,7 +74,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        lifecycleScope.launch(Dispatchers.IO) { initDatabaseAndFixCursor() }
+        lifecycleScope.launch(Dispatchers.IO) { initDatabase() }
 
         searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
         
@@ -97,7 +96,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         setupSpecialLongClick() 
     }
 
-    private fun initDatabaseAndFixCursor() {
+    private fun initDatabase() {
         try {
             val dbFile = getDatabasePath("dict.db")
             if (!dbFile.exists()) {
@@ -109,23 +108,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
             database = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY)
             isDbReady = true
             
-            // ✨ 修复策略：尝试轻量级探测，不读取庞大的 definition 字段，绝不溢出
-            var firstWord = "[未知]"
-            try {
-                val cursor = database!!.rawQuery("SELECT $detectedWordColumn FROM $detectedTableName LIMIT 1", null)
-                if (cursor.moveToFirst()) {
-                    firstWord = cursor.getString(0) ?: "[空词条]"
-                }
-                cursor.close()
-            } catch (e: Exception) {
-                firstWord = "探测失败: ${e.message}"
-            }
-
             runOnUiThread {
-                display.text = "✅ 词库安全就绪！\n底层超大行兼容模式已激活。\n数据库首个词条样本: $firstWord\n\n请在下方输入假名开始查词！"
+                display.text = "✅ 词库完全就绪！\n请输入假名开始查词。"
             }
         } catch (e: Exception) {
-            Log.e("SQL_DB", "数据库打开异常", e)
+            Log.e("SQL_DB", "数据库加载异常", e)
             runOnUiThread { display.text = "加载异常: ${e.message}" }
         }
     }
@@ -237,7 +224,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
         }
     }
 
-    // ✨ 核心机制：为了阻击 Row too big 报错，我们进行“轻量字段分步拉取”
+    // ✨ 终极黑科技：利用 SQLite 的 SUBSTR() 函数进行轻量级切片模糊匹配，安全跨越 2MB 限制
     private fun matchAndFilter() {
         matchJob?.cancel()
 
@@ -255,11 +242,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 
                 if (isDbReady && database != null) {
                     try {
-                        // 🟢 突破步一：检索时绝不拉取 definition 字段！只匹配并拉取精简的 word 字段
-                        // 这样就算释义大上天，也绝对不会发生内存爆表崩溃
-                        val querySQL = "SELECT $detectedWordColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? LIMIT 20"
+                        // 🟢 核心改动：利用 SUBSTR 只截取 definition 前 150 个字符拉入内存匹配
+                        // 这样既能搜索到隐藏在释义开头的假名注音，又把单行体积限制在几个字节，永不触发 Row too big！
+                        val querySQL = "SELECT $detectedWordColumn FROM $detectedTableName WHERE $detectedWordColumn LIKE ? OR SUBSTR($detectedDefColumn, 1, 150) LIKE ? LIMIT 15"
                         val keyword = "%$currentInput%"
-                        val cursor = database!!.rawQuery(querySQL, arrayOf(keyword))
+                        val cursor = database!!.rawQuery(querySQL, arrayOf(keyword, keyword))
                         
                         val matchedWords = mutableListOf<String>()
                         while (cursor.moveToNext()) {
@@ -268,7 +255,7 @@ class FakeCalculatorActivity : AppCompatActivity() {
                         }
                         cursor.close()
 
-                        // 🟢 突破步二：针对匹配出来的极少数词条，进行单条按需加载，防爆防堵
+                        // 🟢 分步精准拉取详细释义
                         for (wordItem in matchedWords) {
                             try {
                                 val singleCursor = database!!.rawQuery(
@@ -277,27 +264,26 @@ class FakeCalculatorActivity : AppCompatActivity() {
                                 )
                                 if (singleCursor.moveToFirst()) {
                                     val definition = singleCursor.getString(0) ?: ""
-                                    // 截取超长内容，防止单条 UI 渲染过载导致卡顿
                                     val cleanDef = Html.fromHtml(definition, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-                                    val safeDef = if (cleanDef.length > 800) cleanDef.take(800) + "\n...(内容过多，已截断显示)" else cleanDef
+                                    // 限制单条显示字数，防止长文本在手机渲染时卡顿
+                                    val safeDef = if (cleanDef.length > 600) cleanDef.take(600) + "\n...(内容过多，已截断显示)" else cleanDef
                                     list.add("【$wordItem】\n$safeDef")
                                 }
                                 singleCursor.close()
-                            } catch (rowTooBigException: Exception) {
-                                // 即使单条太恐怖崩掉了，也容错跳过它，不让整个 App 死掉
-                                list.add("【$wordItem】\n[⚠️ 该词条体量过大，Android 底层拒绝载入]")
+                            } catch (e: Exception) {
+                                list.add("【$wordItem】\n[⚠️ 该词条单行过大，Android 系统限制载入]")
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("SQL_QUERY", "分步检索容错激活失败", e)
+                        Log.e("SQL_QUERY", "切片联合查询执行失败", e)
                     }
                 }
                 list
             }
             
-            // 渲染数据
+            // UI 更新与高亮
             if (results.isEmpty()) {
-                display.text = "未找到匹配词条\n(已隔离超长内容干扰)"
+                display.text = "未找到匹配词条\n(已检索汉字列及释义注音区)"
             } else {
                 val combined = results.joinToString("\n\n")
                 val spannable = SpannableString(combined)
