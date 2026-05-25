@@ -9,87 +9,104 @@
     android:padding="12dp"
     android:weightSum="10">
 
-    <androidx.appcompat.widget.AppCompatTextView
-        android:id="@+id/display"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="2.6"
-        android:layout_marginBottom="8dp"
-        android:background="#000000"
-        
-        android:gravity="top|start"
-        
-        android:paddingTop="16dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="24dp"
-        
-        android:textColor="#FF9800"
-        
-        android:maxLines="8"
-        
-        app:autoSizeTextType="uniform"
-        app:autoSizeMinTextSize="14sp"
-        app:autoSizeMaxTextSize="32sp"
-        app:autoSizeStepGranularity="1sp"
-        
-        android:fontFamily="@font/geek_font_bold"
-        android:textStyle="bold" />
+        android:layout_weight="3.2"
+        android:orientation="vertical"
+        android:layout_marginBottom="8dp">
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:id="@+id/search_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#121212"
+            android:gravity="center_vertical|start"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:textColor="#FF9800"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/geek_font_bold"
+            android:hint="输入假名检索..."
+            android:textColorHint="#444444"
+            android:maxLines="1" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="6dp"
+            android:fillViewport="true">
+
+            <androidx.appcompat.widget.AppCompatTextView
+                android:id="@+id/display"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="top|start"
+                android:paddingBottom="16dp"
+                android:textColor="#FF9800"
+                android:textSize="18sp"
+                android:fontFamily="@font/geek_font_bold"
+                android:lineSpacingMultiplier="1.2" />
+        </ScrollView>
+    </LinearLayout>
 
     <GridLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="7.4"
+        android:layout_weight="6.8"
         android:columnCount="5"
         android:rowCount="10">
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_1" android:text="あ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_2" android:text="い" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_3" android:text="う" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_4" android:text="え" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_5" android:text="お" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_1_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_1" android:text="か" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_2" android:text="き" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_3" android:text="く" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_4" android:text="け" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_5" android:text="こ" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_2_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_1" android:text="さ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_2" android:text="し" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_3" android:text="す" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_4" android:text="せ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_5" android:text="そ" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_3_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_1" android:text="た" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_2" android:text="ち" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_3" android:text="つ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_4" android:text="て" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_5" android:text="と" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_4_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_1" android:text="な" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_2" android:text="に" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_3" android:text="ぬ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_4" android:text="ね" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_5" android:text="の" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_5_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_1" android:text="は" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_2" android:text="ひ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_3" android:text="ふ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_4" android:text="へ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_5" android:text="ほ" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_6_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_1" android:text="ま" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_2" android:text="み" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_3" android:text="む" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_4" android:text="め" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_5" android:text="も" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_4" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_7_5" style="@style/FiftyToneButtonStyle"/>
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_1" android:text="や" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_2" android:text="ゆ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_3" android:text="よ" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_4" android:text="◀" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_5" android:text="▶" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_1" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_2" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_3" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_4" android:text="删除" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_8_5" android:text="ー" style="@style/FiftyToneButtonStyle"/>
 
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_9_1" style="@style/FiftyToneButtonStyle"/>
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_9_2" style="@style/FiftyToneButtonStyle"/>
@@ -101,7 +118,7 @@
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_10_2" style="@style/FiftyToneButtonStyle"/>
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_10_3" style="@style/FiftyToneButtonStyle"/>
         <com.google.android.material.button.MaterialButton android:id="@+id/btn_10_4" android:text="假名" style="@style/FiftyToneButtonStyle"/>
-        <com.google.android.material.button.MaterialButton android:id="@+id/btn_10_5" android:text="清空" style="@style/FiftyToneButtonStyle"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btn_10_5" android:text="促音" style="@style/FiftyToneButtonStyle"/>
 
     </GridLayout>
 </LinearLayout>
