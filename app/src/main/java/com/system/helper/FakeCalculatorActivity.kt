@@ -78,13 +78,21 @@ class FakeCalculatorActivity : AppCompatActivity() {
         display = findViewById(R.id.display)
         searchBar = findViewById(R.id.search_bar) 
 
-        // 异步解压数据库
+        // 异步加载数据库
         lifecycleScope.launch(Dispatchers.IO) {
             setupDatabase()
         }
 
-        searchBar.setOnClickListener { currentInput = ""; matchAndFilter() }
-        display.setOnLongClickListener { currentInput = ""; matchAndFilter(); true }
+        searchBar.setOnClickListener {
+            currentInput = ""
+            matchAndFilter()
+        }
+
+        display.setOnLongClickListener {
+            currentInput = ""
+            matchAndFilter()
+            true
+        }
 
         searchBar.text = ""
         display.text = ""
@@ -98,42 +106,48 @@ class FakeCalculatorActivity : AppCompatActivity() {
         try {
             val dbFile = getDatabasePath("dict.db")
             if (!dbFile.exists()) {
-                assets.open("dict.zip").use { zipStream ->
-                    val zis = ZipInputStream(zipStream)
-                    var entry = zis.nextEntry
+                Log.d("DB", "开始解压 dict.zip...")
+                assets.open("dict.zip").use { assetStream ->
+                    val zipInput = ZipInputStream(assetStream)
+                    var entry = zipInput.nextEntry
                     while (entry != null) {
                         if (entry.name.endsWith(".db")) {
-                            FileOutputStream(dbFile).use { out ->
-                                zis.copyTo(out)
+                            FileOutputStream(dbFile).use { output ->
+                                zipInput.copyTo(output)
                             }
+                            Log.d("DB", "解压完成: ${dbFile.length()} bytes")
                             break
                         }
-                        entry = zis.nextEntry
+                        entry = zipInput.nextEntry
                     }
                 }
-                Log.d("DB", "数据库解压完成")
             }
 
-            database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-            Log.d("DB", "数据库加载成功")
+            if (dbFile.exists()) {
+                database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+                Log.d("DB", "✅ 数据库加载成功")
+            }
         } catch (e: Exception) {
-            Log.e("DB", "数据库加载失败", e)
+            Log.e("DB", "❌ 数据库加载失败", e)
         }
     }
 
-    private fun scanAllButtons(view: View) { /* 保持不变 */ 
-        if (view is MaterialButton) buttonList.add(view)
-        else if (view is ViewGroup) {
-            for (i in 0 until view.childCount) scanAllButtons(view.getChildAt(i))
+    private fun scanAllButtons(view: View) {
+        if (view is MaterialButton) {
+            buttonList.add(view)
+        } else if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                scanAllButtons(view.getChildAt(i))
+            }
         }
     }
 
-    private fun refreshButtonLabels() { /* 保持不变 */ 
-        val list = if (isHiragana) hiraganaList else katakanaList
-        for (i in 0 until minOf(buttonList.size, list.size)) {
+    private fun refreshButtonLabels() {
+        val currentList = if (isHiragana) hiraganaList else katakanaList
+        for (i in 0 until minOf(buttonList.size, currentList.size)) {
             val btn = buttonList[i]
-            btn.text = list[i]
-            btn.setOnClickListener { handleButtonClick(list[i]) }
+            btn.text = currentList[i]
+            btn.setOnClickListener { handleButtonClick(currentList[i]) }
         }
     }
 
@@ -151,7 +165,11 @@ class FakeCalculatorActivity : AppCompatActivity() {
         when (value) {
             "删除" -> if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
             "ー" -> currentInput += "ー"
-            "假名" -> { isHiragana = !isHiragana; refreshButtonLabels(); return }
+            "假名" -> {
+                isHiragana = !isHiragana
+                refreshButtonLabels()
+                return
+            }
             "促音" -> if (currentInput.isNotEmpty()) {
                 val last = currentInput.last().toString()
                 currentInput = currentInput.dropLast(1) + convertToTransformChar(last)
@@ -183,12 +201,14 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 val list = mutableListOf<String>()
                 database?.let { db ->
                     try {
-                        val cursor = db.rawQuery("SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 15", 
-                            arrayOf("$currentInput%"))
+                        val cursor = db.rawQuery(
+                            "SELECT word, text FROM mdx WHERE word LIKE ? LIMIT 15", 
+                            arrayOf("$currentInput%")
+                        )
                         while (cursor.moveToNext()) {
                             val word = cursor.getString(0) ?: ""
-                            val text = cursor.getString(1) ?: ""
-                            val clean = Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                            val rawText = cursor.getString(1) ?: ""
+                            val clean = Html.fromHtml(rawText, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                             list.add("【$word】\n$clean")
                         }
                         cursor.close()
@@ -198,33 +218,48 @@ class FakeCalculatorActivity : AppCompatActivity() {
                 }
                 list
             }
+
             filteredTexts = results
             updateDisplayResult()
         }
     }
 
     private fun convertToTransformChar(char: String): String = when (char) {
-        "つ" -> "っ", "っ" -> "つ", "や" -> "ゃ", "ゃ" -> "や",
-        "ゆ" -> "ゅ", "ゅ" -> "ゆ", "よ" -> "ょ", "ょ" -> "よ",
+        "つ" -> "っ", "っ" -> "つ",
+        "や" -> "ゃ", "ゃ" -> "や",
+        "ゆ" -> "ゅ", "ゅ" -> "ゆ",
+        "よ" -> "ょ", "ょ" -> "よ",
+        "あ" -> "ぁ", "ぁ" -> "あ",
+        "い" -> "ぃ", "ぃ" -> "い",
+        "う" -> "ぅ", "ぅ" -> "う",
+        "え" -> "ぇ", "ぇ" -> "え",
+        "お" -> "ぉ", "ぉ" -> "お",
         else -> char
     }
 
     private fun updateDisplayResult() {
         if (filteredTexts.isEmpty()) {
-            display.text = ""
+            display.text = if (currentInput.isNotEmpty()) "未找到匹配词条" else ""
             return
         }
-        val text = filteredTexts.joinToString("\n\n")
-        val spannable = SpannableString(text)
-        val gold = 0xFFFFD700.toInt()
-        if (currentInput.length <= text.length) {
-            spannable.setSpan(ForegroundColorSpan(gold), 0, currentInput.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        val combined = filteredTexts.joinToString("\n\n")
+        val spannable = SpannableString(combined)
+        val goldColor = 0xFFFFD700.toInt()
+
+        if (currentInput.length <= combined.length) {
+            spannable.setSpan(
+                ForegroundColorSpan(goldColor),
+                0, currentInput.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
         }
+
         display.text = spannable
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        database?.close()
+        try { database?.close() } catch (e: Exception) {}
     }
 }
