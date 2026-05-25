@@ -12,17 +12,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 在编译前自动解压 assets 目录中的词库压缩包
-      - name: Unzip Large Dictionary Text
+      # 2. ✨ 核心步骤：在云端编译前，自动解压资产目录中的 dict.zip，释放出真正的数据库 dict.db
+      - name: Unzip Large Database
         run: |
           cd app/src/main/assets/
           if [ -f "dict.zip" ]; then
-            echo "发现 dict.zip，正在解压 32M 大文本词库..."
+            echo "发现 dict.zip，正在释放 41.7M 高性能 SQLite 数据库..."
             unzip -o dict.zip
             rm dict.zip
-            echo "✅ 词库解压完成，临时压缩包已清理。"
+            echo "✅ 数据库解压完成，临时压缩包已清理。"
           else
-            echo "⚠️ 未发现 dict.zip，请确保本地已正确放置该压缩包，否则编译出的 App 将没有词库！"
+            echo "⚠️ 未发现 dict.zip，请确保本地已正确放置该压缩包！"
           fi
 
       # 3. 设置 JDK 环境
@@ -31,7 +31,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: 'gradle' # 开启 gradle 缓存，加速编译
+          cache: 'gradle'
 
       # 4. 赋予 Gradle 执行权限
       - name: Grant execute permission
@@ -45,6 +45,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          # ✨ 这里也同步修改了你在网页端下载时的压缩包名称（可根据喜好修改）
           name: DictionaryHelper-APK
           path: app/build/outputs/apk/debug/app-debug.apk
