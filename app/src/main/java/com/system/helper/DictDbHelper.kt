@@ -2,7 +2,7 @@ package com.system.helper
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import java.io.FileOutputStream
+import java.io.File
 
 class DictDbHelper(private val context: Context) {
 
@@ -11,30 +11,7 @@ class DictDbHelper(private val context: Context) {
     private var db: SQLiteDatabase? = null
 
     init {
-        copyDatabase()
         openDatabase()
-    }
-
-    /**
-     * 首次启动复制数据库
-     */
-    private fun copyDatabase() {
-
-        val dbFile = context.getDatabasePath(dbName)
-
-        if (!dbFile.exists()) {
-
-            dbFile.parentFile?.mkdirs()
-
-            context.assets.open(dbName).use { input ->
-
-                FileOutputStream(dbFile).use { output ->
-
-                    input.copyTo(output)
-
-                }
-            }
-        }
     }
 
     /**
@@ -42,17 +19,39 @@ class DictDbHelper(private val context: Context) {
      */
     private fun openDatabase() {
 
-        val path = context.getDatabasePath(dbName).path
+        val dbFile = context.getDatabasePath(dbName)
+
+        if (!dbFile.exists()) {
+            return
+        }
 
         db = SQLiteDatabase.openDatabase(
-            path,
+            dbFile.path,
             null,
             SQLiteDatabase.OPEN_READONLY
         )
     }
 
     /**
-     * 前缀搜索
+     * 数据库是否存在
+     */
+    fun isDatabaseExists(): Boolean {
+
+        val dbFile = context.getDatabasePath(dbName)
+
+        return dbFile.exists()
+    }
+
+    /**
+     * 获取数据库文件
+     */
+    fun getDatabaseFile(): File {
+
+        return context.getDatabasePath(dbName)
+    }
+
+    /**
+     * 搜索词条
      */
     fun search(query: String): List<DictItem> {
 
@@ -90,7 +89,7 @@ class DictDbHelper(private val context: Context) {
     }
 
     /**
-     * 精确获取词条
+     * 获取完整词条
      */
     fun getWord(word: String): DictItem? {
 
