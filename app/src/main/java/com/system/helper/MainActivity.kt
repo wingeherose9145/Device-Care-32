@@ -2,23 +2,24 @@ package com.system.helper
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.ArrayAdapter
-import android.widget.EditText
-import android.widget.ListView
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
-import java.io.FileOutputStream
-import java.net.URL
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var db: DictDbHelper
+    private lateinit var dbHelper: DictDbHelper
+
     private lateinit var searchBox: EditText
     private lateinit var listView: ListView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var statusText: TextView
 
-    private var results: List<DictItem> = emptyList()
-
-    private val dbName = "abc.db"
+    private var results = listOf<DictItem>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,87 +28,119 @@ class MainActivity : AppCompatActivity() {
 
         searchBox = findViewById(R.id.searchBox)
         listView = findViewById(R.id.listView)
+        progressBar = findViewById(R.id.progressBar)
+        statusText = findViewById(R.id.statusText)
 
-        // 1. 确保数据库存在（下载或本地已有）
-        ensureDb()
+        dbHelper = DictDbHelper(this)
 
-        // 2. 初始化数据库（必须在 ensureDb 之后）
-        db = DictDbHelper(this)
+        checkDatabase()
+    }
 
-        // 3. 搜索监听
-        searchBox.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) {
-                val text = s.toString().trim()
+    /**
+     * 检测数据库
+     */
+    private fun checkDatabase() {
 
-                results = if (text.isEmpty()) {
-                    emptyList()
-                } else {
-                    db.search(text)
+        if (dbHelper.isDatabaseExists()) {
+
+            initSearch()
+
+        } else {
+
+            downloadDatabase()
+
+        }
+    }
+
+    /**
+     * 下载数据库
+     */
+    private fun downloadDatabase() {
+
+        progressBar.visibility = View.VISIBLE
+        statusText.visibility = View.VISIBLE
+
+        statusText.text = "正在下载词库..."
+
+        lifecycleScope.launch {
+
+            val success = Downloader.downloadDatabase(this@MainActivity)
+
+            progressBar.visibility = View.GONE
+
+            if (success) {
+
+                statusText.text = "词库下载完成"
+
+                dbHelper = DictDbHelper(this@MainActivity)
+
+                initSearch()
+
+            } else {
+
+                statusText.text = "词库下载失败"
+            }
+        }
+    }
+
+    /**
+     * 初始化搜索
+     */
+    private fun initSearch() {
+
+        statusText.visibility = View.GONE
+
+        searchBox.isEnabled = true
+
+        searchBox.addTextChangedListener(object : TextWatcher {
+
+            override fun beforeTextChanged(
+                s: CharSequence?,
+                start: Int,
+                count: Int,
+                after: Int
+            ) {}
+
+            override fun onTextChanged(
+                s: CharSequence?,
+                start: Int,
+                before: Int,
+                count: Int
+            ) {
+
+                val text = s.toString()
+
+                results = dbHelper.search(text)
+
+                val words = results.map {
+
+                    if (it.reading.isNotBlank()) {
+                        "${it.word} 【${it.reading}】"
+                    } else {
+                        it.word
+                    }
                 }
 
                 listView.adapter = ArrayAdapter(
                     this@MainActivity,
                     android.R.layout.simple_list_item_1,
-                    results.map { it.word }
+                    words
                 )
             }
 
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {}
         })
 
-        // 4. 点击词条进入详情页
         listView.setOnItemClickListener { _, _, position, _ ->
+
             val item = results[position]
 
             val intent = Intent(this, WordActivity::class.java)
+
             intent.putExtra("word", item.word)
             intent.putExtra("html", item.html)
 
             startActivity(intent)
-        }
-    }
-
-    // =========================
-    // 数据库检查 + 下载
-    // =========================
-    private fun ensureDb() {
-        val dbFile = getDatabasePath(dbName)
-
-        if (dbFile.exists() && dbFile.length() > 0) {
-            return
-        }
-
-        dbFile.parentFile?.mkdirs()
-
-        Thread {
-            downloadDb(dbFile)
-
-            runOnUiThread {
-                db = DictDbHelper(this)
-            }
-        }.start()
-    }
-
-    private fun downloadDb(targetFile: File) {
-        val url =
-            "https://github.com/wingeherose9145/Device-Care-32/releases/download/v2.0/abc.db"
-
-        try {
-            val connection = URL(url).openConnection()
-            connection.connect()
-
-            val input = connection.getInputStream()
-            val output = FileOutputStream(targetFile)
-
-            input.use { ins ->
-                output.use { outs ->
-                    ins.copyTo(outs)
-                }
-            }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 }
