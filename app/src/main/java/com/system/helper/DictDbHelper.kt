@@ -7,29 +7,43 @@ import java.io.FileOutputStream
 class DictDbHelper(private val context: Context) {
 
     private val dbName = "abc.db"
+
     private var db: SQLiteDatabase? = null
 
     init {
-        copyDbIfNeeded()
-        openDb()
+        copyDatabase()
+        openDatabase()
     }
 
-    private fun copyDbIfNeeded() {
+    /**
+     * 首次启动复制数据库
+     */
+    private fun copyDatabase() {
+
         val dbFile = context.getDatabasePath(dbName)
 
         if (!dbFile.exists()) {
+
             dbFile.parentFile?.mkdirs()
 
             context.assets.open(dbName).use { input ->
+
                 FileOutputStream(dbFile).use { output ->
+
                     input.copyTo(output)
+
                 }
             }
         }
     }
 
-    private fun openDb() {
+    /**
+     * 打开数据库
+     */
+    private fun openDatabase() {
+
         val path = context.getDatabasePath(dbName).path
+
         db = SQLiteDatabase.openDatabase(
             path,
             null,
@@ -37,17 +51,32 @@ class DictDbHelper(private val context: Context) {
         )
     }
 
+    /**
+     * 前缀搜索
+     */
     fun search(query: String): List<DictItem> {
-        val list = mutableListOf<DictItem>()
+
+        val result = mutableListOf<DictItem>()
+
+        if (query.isBlank()) {
+            return result
+        }
 
         val cursor = db?.rawQuery(
-            "SELECT word, reading, html FROM dict WHERE word LIKE ? LIMIT 50",
+            """
+            SELECT word, reading, html
+            FROM dict
+            WHERE word LIKE ?
+            LIMIT 50
+            """.trimIndent(),
             arrayOf("$query%")
         )
 
         cursor?.use {
+
             while (it.moveToNext()) {
-                list.add(
+
+                result.add(
                     DictItem(
                         word = it.getString(0),
                         reading = it.getString(1),
@@ -57,21 +86,32 @@ class DictDbHelper(private val context: Context) {
             }
         }
 
-        return list
+        return result
     }
 
+    /**
+     * 精确获取词条
+     */
     fun getWord(word: String): DictItem? {
+
         val cursor = db?.rawQuery(
-            "SELECT word, reading, html FROM dict WHERE word = ? LIMIT 1",
+            """
+            SELECT word, reading, html
+            FROM dict
+            WHERE word = ?
+            LIMIT 1
+            """.trimIndent(),
             arrayOf(word)
         )
 
         cursor?.use {
+
             if (it.moveToFirst()) {
+
                 return DictItem(
-                    it.getString(0),
-                    it.getString(1),
-                    it.getString(2)
+                    word = it.getString(0),
+                    reading = it.getString(1),
+                    html = it.getString(2)
                 )
             }
         }
